@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HydroConnecto ERP Pro v2.2.2.6 PRO</title>
+  <link rel="stylesheet" href="/styles.css?v=2223-pro" />
+</head>
+<body>
+  <header class="site-header" id="publicHeader">
+    <a class="brand" href="#accueil" aria-label="Accueil HydroConnecto">
+      <img class="brand-logo" src="/assets/logo-hydroconnecto.png" alt="HydroConnecto" />
+      <span><strong>HydroConnecto</strong><small>Hydraulique • Pneumatique • Engins</small></span>
+    </a>
+    <button class="hamburger" id="menuBtn" aria-label="Ouvrir le menu">☰</button>
+    <nav class="public-nav" id="publicNav">
+      <a href="#accueil">Accueil</a>
+      <a href="#services">Services</a>
+      <a href="#galerie">Galerie</a>
+      <a href="#equipe">Équipe</a>
+      <a href="#devis-public">Demande de devis</a>
+      <a href="#contact">Contact</a>
+      <a class="employee-link" href="/admin/login">Employés</a>
+      <a class="whatsapp" href="https://wa.me/221777436153" target="_blank" rel="noreferrer">WhatsApp</a>
+    </nav>
+  </header>
+
+  <main id="publicApp">
+    <a id="publicEmployeeBtn" class="employee-fixed-btn" href="/admin/login">Espace employés</a>
+    <section id="accueil" class="hero-clean public-section" aria-label="HydroConnecto accueil">
+      <img
+        class="hero-clean-img"
+        src="/assets/images/hero-accueil-background.png"
+        alt="HydroConnecto - services hydrauliques"
+      />
+
+      <div class="hero-clean-actions">
+        <a class="btn primary" href="#devis-public">Demander un devis</a>
+        <a class="btn secondary" href="https://wa.me/221777436153" target="_blank" rel="noreferrer">
+          Contacter WhatsApp
+        </a>
+      </div>
+    </section>
+
+    <section id="services" class="public-section section-pad">
+      <div class="section-head">
+        <p class="eyebrow">Nos services</p>
+        <h2>Un savoir-faire orienté atelier et terrain</h2>
+      </div>
+      <div class="services-grid-full" id="publicServices"></div>
+    </section>
+
+    <section id="galerie" class="public-section section-pad light">
+      <div class="section-head">
+        <p class="eyebrow">Réalisations</p>
+        <h2>Galerie photos et vidéos</h2>
+      </div>
+      <div class="gallery-grid" id="publicGallery"></div>
+    </section>
+
+    <section id="equipe" class="public-section section-pad">
+      <div class="section-head">
+        <p class="eyebrow">Notre équipe</p>
+        <h2>Des professionnels au service de vos engins</h2>
+      </div>
+      <div class="team-grid" id="publicTeam"></div>
+    </section>
+
+    <section id="devis-public" class="public-section section-pad quote-section">
+      <div class="section-head">
+        <p class="eyebrow">Demande de devis</p>
+        <h2>Expliquez votre besoin par écrit ou par vocal</h2>
+        <p>Le client peut écrire son besoin, joindre un message vocal, ou faire les deux. La demande arrive directement dans l’admin.</p>
+      </div>
+      <form id="publicQuoteForm" class="public-form" enctype="multipart/form-data">
+        <label>Nom complet<input name="nom_complet" required placeholder="Votre nom" /></label>
+        <label>Téléphone / WhatsApp<input name="telephone" required placeholder="+221 ..." /></label>
+        <label>Type de demande<select name="type_demande"><option value="devis">Demande de devis</option><option value="commande">Commande</option><option value="message">Message / communication</option></select></label>
+        <label>Besoin écrit<textarea name="besoin" placeholder="Exemple : flexible cassé sur excavatrice CAT 320"></textarea></label>
+        <label>Message vocal / audio<input name="audio" type="file" accept="audio/*" /></label>
+        <button class="btn primary" type="submit">Envoyer la demande</button>
+        <p id="publicQuoteMessage" class="form-message hidden"></p>
+      </form>
+    </section>
+
+    <section id="contact" class="public-section section-pad contact-section">
+      <div>
+        <p class="eyebrow">Contact</p>
+        <h2>HydroConnecto</h2>
+        <p><strong>Responsable :</strong> Moustapha Gning</p>
+        <p><strong>Téléphone :</strong> +221 77 743 61 53</p>
+        <p><strong>Email :</strong> hydroconnecto-mig@gmail.com</p>
+        <p><strong>Adresses :</strong> Route de Mboro / Route de Thiès, Thiès, Sénégal</p>
+      </div>
+      <a class="btn primary" href="https://wa.me/221777436153" target="_blank" rel="noreferrer">Écrire sur WhatsApp</a>
+    </section>
+  </main>
+
+  <main id="adminApp" class="admin-app hidden">
+    <section id="adminLogin" class="login-screen hidden">
+      <form id="loginForm" class="login-card">
+        <img class="login-logo" src="/assets/logo-hydroconnecto.png" alt="HydroConnecto" />
+        <h1>Connexion administrateur</h1>
+        <p>Espace privé HydroConnecto ERP. Connexion par compte directeur ou utilisateur créé dans l’admin.</p>
+        <label>Email administrateur / utilisateur<input name="email" type="email" required placeholder="admin@hydroconnecto.local" /></label>
+        <label>Mot de passe<input name="password" type="password" required placeholder="Mot de passe" /></label>
+        <button class="btn primary full" type="submit">Se connecter</button>
+        <p class="hint">Change les identifiants par défaut dans le fichier .env avant publication.</p>
+      </form>
+    </section>
+
+    <section id="adminPanel" class="admin-panel hidden">
+      <a id="adminToSiteBtn" class="admin-fixed-site-link" href="/">← Site web</a>
+      <aside class="admin-sidebar">
+        <div class="admin-brand"><img class="admin-logo" src="/assets/logo-hydroconnecto.png" alt="HydroConnecto" /><strong>ERP privé</strong></div>
+        <button class="admin-tab active" data-admin="dashboard">Tableau de bord</button>
+        <button class="admin-tab" data-admin="demandes">Demandes de devis <span id="demandeBadge" class="badge-small hidden">0</span></button>
+        <button class="admin-tab" data-admin="clients">Clients</button>
+        <button class="admin-tab" data-admin="engins">Engins</button>
+        <button class="admin-tab" data-admin="produits">Produits</button>
+        <button class="admin-tab" data-admin="services">Services</button>
+        <button class="admin-tab" data-admin="interventions">Interventions</button>
+        <button class="admin-tab" data-admin="documents">Devis / Factures / Reçus</button>
+        <button class="admin-tab" data-admin="galerieAdmin">Galerie</button>
+        <button class="admin-tab" data-admin="equipeAdmin">Équipe</button>
+        <button class="admin-tab" data-admin="journal">Journal des actions</button>
+        <button class="admin-tab" data-admin="fournisseurs">Fournisseurs / commandes</button>
+        <button class="admin-tab" data-admin="usersAdmin">Utilisateurs / rôles</button>
+        <button class="admin-tab" data-admin="exports">Exports</button>
+        <button class="admin-tab" data-admin="profile">Mon profil</button>
+        <button class="btn danger ghost" id="logoutBtn">Déconnexion</button>
+      </aside>
+
+      <section class="admin-content">
+        <div class="admin-topbar">
+          <button class="hamburger admin-menu" id="adminMenuBtn">☰</button>
+          <div><strong>HydroConnecto ERP Pro v2.2.2.6 PRO</strong><small id="adminUser">Directeur</small></div>
+        </div>
+
+        <article id="admin-dashboard" class="admin-page active">
+          <h2>Tableau de bord</h2>
+          <div class="stats-grid" id="statsGrid"></div>
+          <div class="panel"><h3>Alertes rapides</h3><div id="dashboardAlerts"></div></div>
+          <div class="panel"><h3>Stock faible</h3><div id="stockFaible"></div></div>
+        </article>
+
+        <article id="admin-demandes" class="admin-page">
+          <h2>Demandes de devis</h2>
+          <div class="toolbar">
+            <input id="demandeSearch" placeholder="Rechercher nom, téléphone, texte..." />
+            <select id="demandeFilter"><option value="">Tous les statuts</option><option value="nouvelle">Nouvelle</option><option value="vue">Vue</option><option value="en_traitement">En traitement</option><option value="convertie_client">Convertie en client</option><option value="convertie_devis">Convertie en devis</option><option value="traitee">Traitée</option><option value="archivee">Archivée</option></select><select id="demandeSort"><option value="date_desc">Plus récentes</option><option value="date_asc">Plus anciennes</option><option value="nom_asc">Nom A-Z</option><option value="statut_asc">Statut A-Z</option></select>
+          </div>
+          <div class="list-panel" id="demandesList"></div>
+        </article>
+
+        <article id="admin-clients" class="admin-page">
+          <h2>Clients</h2>
+          <form id="clientForm" class="form-grid panel">
+            <input type="hidden" name="id" />
+            <label>Nom client / entreprise<input name="nom" required /></label>
+            <label>Téléphone<input name="telephone" placeholder="+221 ..." /></label>
+            <label>Email<input name="email" /></label>
+            <label>Ville<input name="ville" /></label>
+            <label class="span-2">Adresse<input name="adresse" /></label>
+            <label class="span-2">Observations<textarea name="observations"></textarea></label>
+            <button class="btn primary" id="clientSubmitBtn" type="submit">+ Ajouter client</button><button class="btn secondary hidden" type="button" id="clientCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="clientSearch" placeholder="Rechercher client, téléphone, adresse..." /><select id="clientSort"><option value="date_desc">Plus récents</option><option value="nom_asc">Nom A-Z</option><option value="nom_desc">Nom Z-A</option></select></div>
+          <div class="list-panel" id="clientsList"></div>
+        </article>
+
+        <article id="admin-engins" class="admin-page">
+          <h2>Engins</h2>
+          <form id="enginForm" class="form-grid panel">
+            <input type="hidden" name="id" />
+            <label>Client<select name="client_id" id="enginClientSelect" required></select></label>
+            <label>Type d’engin<select name="type_engin" id="typeEnginSelect" required></select></label>
+            <label id="enginAutreWrap" class="hidden">Nom personnalisé<input name="type_engin_autre" /></label>
+            <label>Marque<input name="marque" /></label>
+            <label>Modèle<input name="modele" /></label>
+            <label>Immatriculation<input name="immatriculation" /></label>
+            <label>Heures fonctionnement<input name="heures_fonctionnement" type="number" step="0.01" /></label>
+            <label class="span-2">Observations<textarea name="observations"></textarea></label>
+            <button class="btn primary" id="enginSubmitBtn" type="submit">+ Ajouter engin</button><button class="btn secondary hidden" type="button" id="enginCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="enginSearch" placeholder="Rechercher engin, marque, client..." /><select id="enginSort"><option value="date_desc">Plus récents</option><option value="type_asc">Type A-Z</option><option value="client_asc">Client A-Z</option><option value="marque_asc">Marque A-Z</option></select></div>
+          <div class="list-panel" id="enginsList"></div>
+        </article>
+
+        <article id="admin-produits" class="admin-page">
+          <h2>Produits / stock</h2>
+          <form id="produitForm" class="form-grid panel">
+            <input type="hidden" name="id" />
+            <label>Nom du produit<input name="nom" required /></label>
+            <label>Catégorie<select name="categorie_id" id="categorieProduitSelect"></select></label>
+            <label>Unité<input name="unite" value="unité" /></label>
+            <label>Prix unitaire<input name="prix_unitaire" type="number" step="0.01" /></label>
+            <label>Coût achat<input name="cout_achat" type="number" step="0.01" /></label>
+            <label>Quantité stock<input name="quantite_stock" type="number" step="0.01" /></label>
+            <label>Stock minimum<input name="stock_minimum" type="number" step="0.01" /></label>
+            <label class="span-2">Description<textarea name="description"></textarea></label>
+            <button class="btn primary" type="submit" id="produitSubmitBtn">+ Ajouter produit</button>
+            <button class="btn secondary hidden" type="button" id="produitCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="produitSearch" placeholder="Rechercher produit, catégorie..." /><select id="produitSort"><option value="nom_asc">Nom A-Z</option><option value="stock_asc">Stock faible d'abord</option><option value="prix_desc">Prix élevé</option></select></div>
+          <div class="list-panel" id="produitsList"></div>
+        </article>
+
+        <article id="admin-services" class="admin-page">
+          <h2>Services</h2>
+          <form id="serviceForm" class="form-grid panel">
+            <input type="hidden" name="id" />
+            <label>Nom du service<input name="nom" required /></label>
+            <label>Unité<input name="unite" value="service" /></label>
+            <label>Prix unitaire<input name="prix_unitaire" type="number" step="0.01" /></label>
+            <label class="span-2">Description<textarea name="description"></textarea></label>
+            <button class="btn primary" type="submit" id="serviceSubmitBtn">+ Ajouter service</button>
+            <button class="btn secondary hidden" type="button" id="serviceCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="serviceSearch" placeholder="Rechercher service..." /><select id="serviceSort"><option value="nom_asc">Nom A-Z</option><option value="nom_desc">Nom Z-A</option><option value="prix_asc">Prix bas</option><option value="prix_desc">Prix élevé</option></select></div>
+          <div class="list-panel" id="servicesList"></div>
+        </article>
+
+        <article id="admin-interventions" class="admin-page">
+          <h2>Interventions</h2>
+          <form id="interventionForm" class="form-grid panel"><input type="hidden" name="id" />
+            <label>Client<select name="client_id" id="interventionClientSelect" required></select></label>
+            <div class="inline-actions"><label>Engin<select name="engin_id" id="interventionEnginSelect"></select></label><button type="button" class="btn small secondary" id="quickEnginBtn">+ Nouvel engin</button></div>
+            <button type="button" class="btn small secondary" id="quickClientBtn">+ Nouveau client</button>
+            <label>Statut<select name="statut"><option value="planifiee">Planifiée</option><option value="assignee">Assignée</option><option value="debut_intervention">Début intervention</option><option value="en_cours">En cours</option><option value="pause">Pause</option><option value="fin_intervention">Fin intervention</option><option value="terminee">Terminée</option><option value="facturee">Facturée</option><option value="annulee">Annulée</option></select></label>
+            <label>Date<input name="date_intervention" type="date" /></label>
+            <label class="span-2">Problème signalé<textarea name="probleme_signale"></textarea></label>
+            <label class="span-2">Diagnostic<textarea name="diagnostic"></textarea></label>
+            <label class="span-2">Travaux réalisés<textarea name="travaux_realises"></textarea></label>
+
+            <div class="span-2 sub-panel">
+              <h3>Intervenants affectés</h3>
+              <p class="meta">Une intervention peut avoir plusieurs intervenants avec leur rôle, statut, début et fin.</p>
+              <div id="intervenantRows"></div>
+              <button type="button" class="btn secondary" id="addIntervenantBtn">+ Ajouter un intervenant</button>
+            </div>
+
+            <div class="span-2 sub-panel">
+              <h3>Pièces / produits utilisés</h3>
+              <p class="meta">Les quantités utilisées diminueront automatiquement le stock.</p>
+              <div id="pieceRows"></div>
+              <button type="button" class="btn secondary" id="addPieceBtn">+ Ajouter une pièce</button>
+            </div>
+
+            <button class="btn primary" type="submit">+ Créer intervention</button>
+          </form>
+          <div class="toolbar"><input id="interventionSearch" placeholder="Rechercher intervention, client, engin..." /><select id="interventionFilter"><option value="">Tous statuts</option><option value="planifiee">Planifiée</option><option value="assignee">Assignée</option><option value="debut_intervention">Début intervention</option><option value="en_cours">En cours</option><option value="fin_intervention">Fin intervention</option><option value="terminee">Terminée</option><option value="facturee">Facturée</option><option value="annulee">Annulée</option></select><select id="interventionSort"><option value="date_desc">Plus récentes</option><option value="date_asc">Plus anciennes</option><option value="client_asc">Client A-Z</option><option value="statut_asc">Statut A-Z</option></select></div>
+          <div class="list-panel" id="interventionsList"></div>
+        </article>
+
+        <article id="admin-documents" class="admin-page">
+          <h2>Devis / Factures / Reçus</h2>
+          <div class="doc-tabs"><button class="doc-tab active" data-doc="facture">Facture</button><button class="doc-tab" data-doc="devis">Devis</button><button class="doc-tab" data-doc="recu">Reçu</button><button class="doc-tab" data-doc="historique">Historique</button></div>
+          <form id="documentForm" class="panel document-form">
+            <input type="hidden" name="mode" value="facture" />
+            <div class="form-grid">
+              <label>Client<select name="client_id" id="documentClientSelect"></select></label>
+              <label class="recu-only hidden">Facture liée<select name="facture_id" id="paiementFactureSelect"></select></label>
+              <label>Date<input name="date" type="date" /></label>
+              <label class="not-recu">Taxe (%)<input name="taxe_pourcentage" type="number" step="0.01" placeholder="0 ou vide" /></label>
+              <label class="not-recu">Remise FCFA<input name="remise" type="number" step="0.01" value="0" /></label>
+              <label class="facture-only">Montant payé<input name="montant_paye" type="number" step="0.01" value="0" /></label>
+              <label class="recu-only hidden">Montant reçu<input name="montant" type="number" step="0.01" /></label>
+              <label class="recu-only hidden">Méthode<select name="methode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="virement">Virement</option><option value="cheque">Chèque</option></select></label>
+              <label class="span-2">Notes<textarea name="notes"></textarea></label>
+            </div>
+            <div class="not-recu lines-box">
+              <h3>Lignes article/service</h3>
+              <div id="documentLines"></div>
+              <button class="btn secondary" type="button" id="addLineBtn">+ Ajouter une ligne</button>
+            </div>
+            <div class="total-preview" id="totalPreview"></div>
+            <button class="btn primary" type="submit" id="documentSubmitBtn">Créer la facture</button>
+          </form>
+          <div id="documentSuccess" class="success-modal hidden"></div>
+          <div id="documentsTools" class="toolbar hidden"><input id="documentSearch" placeholder="Rechercher numéro, client..." /><select id="documentSort"><option value="date_desc">Plus récents</option><option value="numero_asc">Numéro A-Z</option><option value="client_asc">Client A-Z</option><option value="montant_desc">Montant élevé</option></select></div><div id="documentsHistory" class="list-panel hidden"></div>
+        </article>
+
+        <article id="admin-galerieAdmin" class="admin-page">
+          <h2>Galerie admin</h2>
+          <form id="galerieForm" class="form-grid panel" enctype="multipart/form-data">
+            <input type="hidden" name="id" />
+            <label>Titre<input name="titre" required /></label>
+            <label>Catégorie<input name="categorie" placeholder="Avant / Après, Atelier..." /></label>
+            <label class="span-2">Image ou vidéo depuis l’ordinateur<input name="media" type="file" accept="image/*,video/*" /></label>
+            <label class="span-2">Description<textarea name="description"></textarea></label>
+            <button class="btn primary" type="submit" id="galerieSubmitBtn">Ajouter à la galerie</button>
+            <button class="btn secondary hidden" type="button" id="galerieCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="galerieSearch" placeholder="Rechercher titre, catégorie, description..." /><select id="galerieSort"><option value="date_desc">Plus récents</option><option value="titre_asc">Titre A-Z</option><option value="categorie_asc">Catégorie A-Z</option></select></div>
+          <div class="gallery-grid" id="galerieAdminList"></div>
+        </article>
+
+        <article id="admin-equipeAdmin" class="admin-page">
+          <h2>Équipe</h2>
+          <form id="equipeForm" class="form-grid panel" enctype="multipart/form-data">
+            <input type="hidden" name="id" />
+            <label>Nom complet<input name="nom_complet" required /></label>
+            <label>Fonction<select name="fonction" id="fonctionSelect" required></select></label>
+            <label id="fonctionAutreWrap" class="hidden">Fonction personnalisée<input name="fonction_autre" /></label>
+            <label>Statut<select name="statut"><option value="actif">Actif</option><option value="inactif">Inactif</option></select></label>
+            <label>Ordre d’affichage<input name="ordre" type="number" value="0" /></label>
+            <label>Téléphone<input name="telephone" /></label>
+            <label>Email<input name="email" /></label>
+            <label class="span-2">Photo depuis ordinateur<input name="photo" type="file" accept="image/*" /></label>
+            <div class="span-2 multi-choice-field">
+              <label>Spécialités</label>
+              <p class="meta">Sélectionnez une ou plusieurs spécialités. Les choix apparaissent clairement ci-dessous.</p>
+              <div id="specialitesCheckboxes" class="chips-checkbox-grid"></div>
+              <input type="hidden" name="specialites" id="specialitesHidden" />
+              <div class="selected-chips" id="selectedSpecialitesChips"></div>
+            </div>
+            <label class="span-2">Informations personnelles/professionnelles<textarea name="informations_personnelles"></textarea></label>
+            <label class="span-2">Description publique<textarea name="description"></textarea></label>
+            <label class="check"><input name="visible" type="checkbox" checked /> Afficher sur le site public</label>
+            <button class="btn primary" type="submit">Ajouter / Modifier</button>
+          </form>
+          <div class="toolbar"><input id="equipeSearch" placeholder="Rechercher membre, fonction, spécialité..." /><select id="equipeFilter"><option value="">Tous</option><option value="visible">Visibles sur site</option><option value="masque">Masqués</option><option value="actif">Actifs</option><option value="inactif">Inactifs</option></select><select id="equipeSort"><option value="ordre_asc">Ordre</option><option value="nom_asc">Nom A-Z</option><option value="fonction_asc">Fonction A-Z</option></select></div>
+          <div class="team-grid" id="equipeAdminList"></div>
+        </article>
+
+        <article id="admin-journal" class="admin-page">
+          <h2>Journal des actions</h2>
+          <div class="toolbar"><input id="journalSearch" placeholder="Rechercher action, module, utilisateur..." /><select id="journalLimit"><option value="50">50 derniers</option><option value="100">100 derniers</option><option value="250">250 derniers</option></select></div>
+          <div class="list-panel" id="journalList"></div>
+        </article>
+
+        <article id="admin-fournisseurs" class="admin-page">
+          <h2>Fournisseurs / commandes</h2>
+          <p class="meta">Suivi des fournisseurs, commandes passées, livraisons et entrée automatique en stock à la réception.</p>
+          <div class="form-grid">
+            <form id="fournisseurForm" class="form-grid panel">
+              <input type="hidden" name="id" />
+              <h3 class="span-2">Fournisseur</h3>
+              <label>Nom fournisseur<input name="nom" required /></label>
+              <label>Contact<input name="contact" /></label>
+              <label>Téléphone<input name="telephone" /></label>
+              <label>Email<input name="email" type="email" /></label>
+              <label class="span-2">Adresse<input name="adresse" /></label>
+              <label>Statut<select name="statut"><option value="actif">Actif</option><option value="suspendu">Suspendu</option><option value="archive">Archivé</option></select></label>
+              <label class="span-2">Notes<textarea name="notes"></textarea></label>
+              <button class="btn primary" type="submit">Enregistrer fournisseur</button>
+            </form>
+
+            <form id="commandeFournisseurForm" class="form-grid panel">
+              <input type="hidden" name="id" />
+              <h3 class="span-2">Commande fournisseur</h3>
+              <label>Fournisseur<select name="fournisseur_id" id="commandeFournisseurSelect"></select></label>
+              <label>Statut<select name="statut"><option value="brouillon">Brouillon</option><option value="envoyee">Envoyée</option><option value="confirmee">Confirmée</option><option value="en_livraison">En livraison</option><option value="livree">Livrée</option><option value="annulee">Annulée</option></select></label>
+              <label>Date commande<input name="date_commande" type="date" /></label>
+              <label>Date livraison prévue<input name="date_livraison_prevue" type="date" /></label>
+              <label class="span-2">Produit à commander<select name="produit_id" id="commandeProduitSelect"></select></label>
+              <label>Quantité<input name="quantite" type="number" step="0.01" min="0" /></label>
+              <label>Prix achat unitaire<input name="prix_unitaire" type="number" step="0.01" min="0" /></label>
+              <label class="span-2">Notes<textarea name="notes"></textarea></label>
+              <button class="btn primary" type="submit">Créer commande</button>
+            </form>
+          </div>
+          <div class="toolbar"><input id="fournisseurSearch" placeholder="Rechercher fournisseur ou commande..." /></div>
+          <div class="list-panel" id="fournisseursList"></div>
+          <div class="list-panel" id="commandesFournisseursList"></div>
+        </article>
+
+        <article id="admin-usersAdmin" class="admin-page">
+          <h2>Utilisateurs / rôles / permissions</h2><p class="meta">Un utilisateur doit avoir le statut <strong>Approuvé</strong> pour se connecter. Son rôle limite les modules accessibles.</p>
+          <form id="userAccountForm" class="form-grid panel">
+            <label>Nom complet<input name="nom_complet" required /></label>
+            <label>Email<input name="email" type="email" required /></label>
+            <label>Rôle<select name="role">
+              <option value="technicien">Technicien</option><option value="chef_atelier">Chef d’atelier</option><option value="magasinier_stock">Magasinier / Stock</option><option value="comptable">Comptable</option><option value="commercial">Commercial</option><option value="assistant_administratif">Assistant administratif</option><option value="lecture_seule">Lecture seule</option><option value="administrateur">Administrateur</option><option value="super_administrateur">Super administrateur</option>
+            </select></label>
+            <label>Statut<select name="statut"><option value="en_attente">En attente</option><option value="approuve">Approuvé</option><option value="refuse">Refusé</option><option value="suspendu">Suspendu</option><option value="desactive">Désactivé</option></select></label>
+            <label>Téléphone<input name="telephone" placeholder="+221 ..." /></label>
+            <label>Adresse<input name="adresse" placeholder="Adresse personnelle ou professionnelle" /></label>
+            <label class="span-2">Mot de passe temporaire<input name="password_temp" type="password" placeholder="À changer par l’utilisateur" /></label>
+            <label class="span-2">Modules / accès supplémentaires
+              <select name="permissions_extra" id="userExtraPermissionsSelect" multiple>
+                <option value="dashboard.finance">Dashboard financier</option>
+                <option value="dashboard.stock">Dashboard stock</option>
+                <option value="dashboard.interventions">Dashboard interventions</option>
+                <option value="demandes_devis.*">Demandes / communications</option>
+                <option value="clients.*">Clients</option>
+                <option value="engins.*">Engins</option>
+                <option value="produits.*">Stock / produits</option>
+                <option value="services.*">Services</option>
+                <option value="interventions.*">Interventions complètes</option>
+                <option value="interventions.assign_team">Assignation équipe</option>
+                <option value="interventions.change_schedule">Planification intervention</option>
+                <option value="documents.*">Documents</option>
+                <option value="factures.*">Factures</option>
+                <option value="paiements.*">Paiements / reçus</option>
+                <option value="galerie.*">Galerie</option>
+                <option value="equipe.*">Équipe</option>
+                <option value="fournisseurs.*">Fournisseurs</option>
+                <option value="commandes_fournisseurs.*">Commandes fournisseurs</option>
+                <option value="users.*">Utilisateurs / rôles</option>
+                <option value="journal.view">Journal</option>
+                <option value="exports.*">Exports</option>
+              </select>
+            </label>
+            <label>Début accès extra<input name="permissions_date_debut" type="datetime-local" /></label>
+            <label>Fin accès extra<input name="permissions_date_fin" type="datetime-local" /></label>
+            <label class="span-2">Motif accès supplémentaire<textarea name="motif_permissions_extra" placeholder="Exemple : remplacement temporaire chef d’atelier"></textarea></label>
+            <button class="btn primary" type="submit" id="userSubmitBtn">Créer le compte</button>
+            <button class="btn secondary hidden" type="button" id="userCancelBtn">Annuler modification</button>
+          </form>
+          <div class="toolbar"><input id="userSearch" placeholder="Rechercher utilisateur, email, rôle..." /><select id="userStatusFilter"><option value="">Tous les statuts</option><option value="en_attente">En attente</option><option value="approuve">Approuvé</option><option value="suspendu">Suspendu</option><option value="desactive">Désactivé</option></select></div>
+          <div class="list-panel" id="usersAdminList"></div>
+        </article>
+
+        <article id="admin-profile" class="admin-page">
+          <h2>Mon profil / paramètres</h2>
+          <p class="meta">Chaque utilisateur peut mettre à jour ses informations personnelles et changer son mot de passe.</p>
+          <form id="profileForm" class="form-grid panel" enctype="multipart/form-data">
+            <label>Nom complet<input name="nom_complet" required /></label>
+            <label>Email<input name="email" type="email" required /></label>
+            <label>Téléphone<input name="telephone" /></label>
+            <label>Adresse<input name="adresse" /></label>
+            <label class="span-2">Photo de profil<input name="photo" type="file" accept="image/*" /></label>
+            <label class="span-2">Nouveau mot de passe<input name="password" type="password" placeholder="Laisser vide pour ne pas changer" /></label>
+            <button class="btn primary" type="submit">Enregistrer mon profil</button>
+          </form>
+          <div class="panel" id="profilePermissionsBox"></div>
+        </article>
+
+        <article id="admin-exports" class="admin-page">
+          <h2>Exports</h2>
+          <div class="panel">
+            <p>Exporter les données pour la comptabilité ou le suivi administratif.</p>
+            <div class="export-grid" id="exportGrid"></div>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p><strong>HydroConnecto</strong> — Responsable : Moustapha Gning — Tél : +221 77 743 61 53 — Email : hydroconnecto-mig@gmail.com</p>
+    <p>Adresses : Route de Mboro / Route de Thiès, Thiès, Sénégal</p>
+   <!-- <p>Conception et développement : Mouhammadoul Hadi Gning — Concepteur | Développeur en technologie numérique | Administrateur de bases de données — mhgning2024ca@gmail.com</p> -->
+ 
+   <p class="credit">Conception et développement : Mouhammadoul Hadi Gning — Concepteur | Développeur en technologie numérique | Administrateur de bases de données — mhgning2024ca@gmail.com</p>
+  </footer>
+
+  <dialog id="quickModal" class="modal"><div id="quickModalContent"></div></dialog>
+  <script src="/app.js?v=2223-pro"></script>
+</body>
+</html>

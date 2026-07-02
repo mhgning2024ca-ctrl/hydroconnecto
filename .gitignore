@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+public/uploads/*
+!public/uploads/.gitkeep
+server.backup-*.js
+patch_*.js
+patch_pdf_footer_*.js
+*.log
+.DS_Store
+public/uploads/
