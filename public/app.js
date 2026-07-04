@@ -98,11 +98,20 @@ function money(value) {
   const formatted = String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${formatted} FCFA`;
 }
+function getCookie(name) {
+  return document.cookie.split(';').map(x => x.trim()).find(x => x.startsWith(`${name}=`))?.split('=').slice(1).join('=') || '';
+}
 function formToObject(form) { return Object.fromEntries(new FormData(form).entries()); }
 function normalizeText(v) { return String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 function statusLabel(s) { return String(s || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()); }
 async function api(url, options = {}) {
-  const res = await fetch(url, { credentials: 'include', ...options });
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  const csrf = decodeURIComponent(getCookie('hydro_csrf'));
+  if (csrf && !['GET', 'HEAD', 'OPTIONS'].includes(method) && url.startsWith('/api/') && !url.startsWith('/api/public/') && url !== '/api/auth/login') {
+    headers['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(url, { credentials: 'include', ...options, headers });
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
@@ -1207,7 +1216,21 @@ initFinalFixListeners();
     if (sort === 'client_asc') items = finalSortTxt(items, x=>x.client, 'asc');
     if (sort === 'montant_desc') items = finalSortNum(items, x=>x.total, 'desc');
     $('documentsTools')?.classList.remove('hidden');
-    $('documentsHistory').innerHTML = items.map(x => `<article class="item-card"><h3>${x.label} ${escapeHtml(x.numero)}</h3><p class="meta">${escapeHtml(x.client)} • Montant : ${money(x.total)} • ${escapeHtml(statusLabel(x.statut || ''))}</p><div class="item-actions"><button class="btn small secondary" onclick="editDocument('${x.type}','${x.id}')">Modifier</button><a class="btn small primary" target="_blank" href="/api/pdf/${x.type}/${x.id}">Voir PDF</a><a class="btn small secondary" download href="/api/pdf/${x.type}/${x.id}">Télécharger</a><button class="btn small danger" onclick="archiveDocument('${x.type}','${x.id}')">Archiver/Annuler</button><button class="btn small danger-outline" onclick="hardDeleteDocument('${x.type}','${x.id}')">Supprimer</button></div></article>`).join('') || '<p class="meta">Aucun document.</p>';
+    $('documentsHistory').innerHTML = items.map(x => {
+      const paymentAction = x.type === 'factures' && Number(x.solde || 0) > 0
+        ? `<button class="btn small success" onclick="initiatePayment('${x.id}')">Paiement API</button>`
+        : '';
+      return `<article class="item-card"><h3>${x.label} ${escapeHtml(x.numero)}</h3><p class="meta">${escapeHtml(x.client)} • Montant : ${money(x.total)} • Solde : ${money(x.solde || 0)} • ${escapeHtml(statusLabel(x.statut || ''))}</p><div class="item-actions"><button class="btn small secondary" onclick="editDocument('${x.type}','${x.id}')">Modifier</button>${paymentAction}<a class="btn small primary" target="_blank" href="/api/pdf/${x.type}/${x.id}">Voir PDF</a><a class="btn small secondary" download href="/api/pdf/${x.type}/${x.id}">Télécharger</a><button class="btn small danger" onclick="archiveDocument('${x.type}','${x.id}')">Archiver/Annuler</button><button class="btn small danger-outline" onclick="hardDeleteDocument('${x.type}','${x.id}')">Supprimer</button></div></article>`;
+    }).join('') || '<p class="meta">Aucun document.</p>';
+  };
+
+  window.initiatePayment = async function(id) {
+    if (!confirm('Envoyer une demande de paiement API pour cette facture ?')) return;
+    try {
+      const result = await jsonApi('/api/payments/initiate', 'POST', { facture_id: id });
+      if (result.checkout_url) window.open(result.checkout_url, '_blank', 'noopener,noreferrer');
+      toast(result.checkout_url ? 'Lien de paiement généré et notification envoyée si WhatsApp est configuré.' : 'Demande de paiement envoyée à l’API.');
+    } catch (err) { toast(err.message); }
   };
 
   window.renderGalerieAdmin = function renderGalerieAdminFinal(){

@@ -6,6 +6,7 @@ try {
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,21 +18,56 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const IS_VERCEL = Boolean(process.env.VERCEL);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 // Sur Vercel, le dossier de la fonction est en lecture seule.
 // Les fichiers uploadés temporairement doivent aller dans /tmp.
 const UPLOAD_DIR = IS_VERCEL ? path.join('/tmp', 'hydroconnecto-uploads') : path.join(PUBLIC_DIR, 'uploads');
 const ASSET_DIR = path.join(PUBLIC_DIR, 'assets');
 const LOGO_PATH = path.join(ASSET_DIR, 'logo-hydroconnecto.png');
+const PUBLIC_STORAGE_BUCKETS = new Set(['galerie', 'equipe', 'avatars']);
+const PRIVATE_STORAGE_BUCKETS = new Set(['demandes-devis', 'documents', 'factures', 'devis', 'recus']);
+const CSRF_COOKIE = 'hydro_csrf';
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!IS_VERCEL) fs.mkdirSync(ASSET_DIR, { recursive: true });
 
-app.use(cors({ origin: true, credentials: true }));
+validateRuntimeSecurity();
+
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  if (IS_PRODUCTION) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  next();
+});
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    const allowed = getAllowedOrigins();
+    return cb(null, allowed.includes(origin));
+  },
+  credentials: true
+}));
 app.use(bodyParser.json({ limit: '25mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '25mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'hydroconnecto-dev-secret'));
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  maxAge: IS_PRODUCTION ? '1d' : 0,
+  setHeaders(res, filePath) {
+    if (/\.(png|jpg|jpeg|webp|gif|css|js)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', IS_PRODUCTION ? 'public, max-age=86400, stale-while-revalidate=604800' : 'no-cache');
+    }
+  }
+}));
+app.use(csrfProtection);
 
 function sendIndexFile(req, res) {
   const indexPath = path.join(PUBLIC_DIR, 'index.html');
@@ -43,6 +79,149 @@ app.get('/', sendIndexFile);
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/favicon.png', (req, res) => res.status(204).end());
 
+
+function getAllowedOrigins() {
+  const configured = String(process.env.ALLOWED_ORIGINS || process.env.APP_URL || '')
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+  if (process.env.VERCEL_URL) configured.push(`https://${process.env.VERCEL_URL}`);
+  const local = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
+  return [...new Set([...configured, ...local])];
+}
+
+function isWeakSecret(value = '') {
+  const v = String(value || '').trim();
+  return !v || v.length < 32 || [
+    'hydroconnecto-dev-secret',
+    'hydroconnecto-local-secret-cookie-a-changer-en-production',
+    'change-moi-123'
+  ].includes(v);
+}
+
+function validateRuntimeSecurity() {
+  if (!IS_PRODUCTION) return;
+  const problems = [];
+  if (isWeakSecret(process.env.COOKIE_SECRET)) problems.push('COOKIE_SECRET doit être unique et contenir au moins 32 caractères.');
+  if (!process.env.ADMIN_PASSWORD_HASH && String(process.env.ADMIN_PASSWORD || '').trim() === 'change-moi-123') {
+    problems.push('ADMIN_PASSWORD par défaut interdit en production.');
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    problems.push('SUPABASE_SERVICE_ROLE_KEY requis en production pour garder les fichiers privés côté serveur.');
+  }
+  if (String(process.env.NOTIFICATION_WHATSAPP_ENABLED || '').toLowerCase() === 'true') {
+    const provider = String(process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase();
+    if (provider === 'meta' && (!process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_ACCESS_TOKEN)) {
+      problems.push('WhatsApp activé: WHATSAPP_PHONE_NUMBER_ID et WHATSAPP_ACCESS_TOKEN requis.');
+    }
+    if (provider === 'generic' && !process.env.WHATSAPP_API_URL) {
+      problems.push('WhatsApp generic activé: WHATSAPP_API_URL requis.');
+    }
+  }
+  if (process.env.PAYMENT_API_URL && (!process.env.PAYMENT_API_KEY || !process.env.PAYMENT_WEBHOOK_SECRET)) {
+    problems.push('Paiement API: PAYMENT_API_KEY et PAYMENT_WEBHOOK_SECRET requis.');
+  }
+  if (!process.env.ALLOWED_ORIGINS && !process.env.APP_URL && !process.env.VERCEL_URL) {
+    console.warn('⚠️ ALLOWED_ORIGINS ou APP_URL non défini : seules les requêtes sans Origin et localhost seront acceptées.');
+  }
+  if (problems.length) throw new Error(`Configuration sécurité invalide: ${problems.join(' ')}`);
+}
+
+function secureCookieOptions(extra = {}) {
+  return {
+    sameSite: 'strict',
+    secure: IS_PRODUCTION,
+    ...extra
+  };
+}
+
+function createCsrfToken(res) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  res.cookie(CSRF_COOKIE, token, secureCookieOptions({
+    httpOnly: false,
+    maxAge: 1000 * 60 * 60 * 8
+  }));
+  return token;
+}
+
+function csrfProtection(req, res, next) {
+  const method = req.method.toUpperCase();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return next();
+  if (req.path === '/api/auth/login') return next();
+  if (req.path.startsWith('/api/public/')) return next();
+  if (req.path.startsWith('/api/webhooks/')) return next();
+  if (!req.path.startsWith('/api/')) return next();
+
+  const headerToken = String(req.headers['x-csrf-token'] || '').trim();
+  const cookieToken = String(req.cookies?.[CSRF_COOKIE] || '').trim();
+  if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    return res.status(403).json({ error: 'Protection sécurité invalide. Recharge la page puis réessaie.' });
+  }
+  next();
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('base64url');
+  const N = 16384;
+  const r = 8;
+  const p = 1;
+  const key = crypto.scryptSync(String(password), salt, 64, { N, r, p }).toString('base64url');
+  return `scrypt$${N}$${r}$${p}$${salt}$${key}`;
+}
+
+function safeCompare(a = '', b = '') {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function verifyPassword(password, stored) {
+  const value = String(stored || '');
+  if (!value) return false;
+  if (!value.startsWith('scrypt$')) return safeCompare(String(password), value);
+  const [, nRaw, rRaw, pRaw, salt, key] = value.split('$');
+  const N = Number(nRaw);
+  const r = Number(rRaw);
+  const p = Number(pRaw);
+  if (!N || !r || !p || !salt || !key) return false;
+  const derived = crypto.scryptSync(String(password), salt, 64, { N, r, p }).toString('base64url');
+  return safeCompare(derived, key);
+}
+
+function isPasswordHash(value = '') {
+  return String(value || '').startsWith('scrypt$');
+}
+
+const loginAttempts = new Map();
+function getClientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || 'unknown';
+}
+function checkLoginRateLimit(req, res) {
+  const key = `${getClientIp(req)}:${String(req.body?.email || '').trim().toLowerCase()}`;
+  const now = Date.now();
+  const current = loginAttempts.get(key) || { count: 0, first: now, blockedUntil: 0 };
+  if (current.blockedUntil > now) {
+    const seconds = Math.ceil((current.blockedUntil - now) / 1000);
+    res.status(429).json({ error: `Trop de tentatives. Réessaie dans ${seconds} secondes.` });
+    return false;
+  }
+  if (now - current.first > 15 * 60 * 1000) {
+    loginAttempts.set(key, { count: 1, first: now, blockedUntil: 0 });
+    return true;
+  }
+  current.count += 1;
+  if (current.count > 7) current.blockedUntil = now + 15 * 60 * 1000;
+  loginAttempts.set(key, current);
+  if (current.blockedUntil > now) {
+    res.status(429).json({ error: 'Trop de tentatives. Connexion temporairement bloquée.' });
+    return false;
+  }
+  return true;
+}
+function clearLoginRateLimit(req) {
+  const key = `${getClientIp(req)}:${String(req.body?.email || '').trim().toLowerCase()}`;
+  loginAttempts.delete(key);
+}
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 // Clé serveur recommandée pour les uploads persistants Supabase Storage.
@@ -556,6 +735,133 @@ async function logAction(req, action, tableConcernee = null, enregistrementId = 
   } catch (e) { console.warn('Journal non enregistré:', e.message); }
 }
 
+function normalizePhone(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00')) return digits.slice(2);
+  if (digits.length === 9 && digits.startsWith('7')) return `221${digits}`;
+  return digits;
+}
+
+async function insertBestEffort(table, payload) {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.from(table).insert(payload).select('*').single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    console.warn(`${table} non enregistré:`, e.message);
+    return null;
+  }
+}
+
+async function sendWhatsAppText(to, message, meta = {}) {
+  const enabled = String(process.env.NOTIFICATION_WHATSAPP_ENABLED || 'false').toLowerCase() === 'true';
+  const target = normalizePhone(to || process.env.WHATSAPP_TO || COMPANY.whatsapp);
+  const provider = String(process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase();
+  const payloadLog = { canal: 'whatsapp', destinataire: target, message, meta, statut: 'ignore' };
+
+  if (!enabled || !target || !message) {
+    await insertBestEffort('notification_logs', { ...payloadLog, statut: 'ignore', reponse: { reason: 'disabled_or_missing_target' } });
+    return { sent: false, skipped: true };
+  }
+
+  try {
+    let response;
+    if (provider === 'generic') {
+      const url = process.env.WHATSAPP_API_URL;
+      if (!url) throw new Error('WHATSAPP_API_URL manquant');
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.WHATSAPP_ACCESS_TOKEN ? { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` } : {})
+        },
+        body: JSON.stringify({ to: target, message, meta })
+      });
+    } else {
+      const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const token = process.env.WHATSAPP_ACCESS_TOKEN;
+      if (!phoneNumberId || !token) throw new Error('WHATSAPP_PHONE_NUMBER_ID ou WHATSAPP_ACCESS_TOKEN manquant');
+      response = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: target,
+          type: 'text',
+          text: { preview_url: false, body: message }
+        })
+      });
+    }
+
+    const text = await response.text();
+    let body;
+    try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+    if (!response.ok) throw new Error(body.error?.message || body.message || `WhatsApp HTTP ${response.status}`);
+    await insertBestEffort('notification_logs', { ...payloadLog, statut: 'envoye', reponse: body });
+    return { sent: true, response: body };
+  } catch (e) {
+    await insertBestEffort('notification_logs', { ...payloadLog, statut: 'erreur', erreur: e.message });
+    console.warn('Notification WhatsApp non envoyée:', e.message);
+    return { sent: false, error: e.message };
+  }
+}
+
+function buildAppUrl(pathname = '/') {
+  const base = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${PORT}`);
+  return `${String(base).replace(/\/+$/, '')}${pathname.startsWith('/') ? pathname : '/' + pathname}`;
+}
+
+async function createPaymentRequest({ facture, montant, telephone, callbackPath = '/api/webhooks/payment' }) {
+  const provider = String(process.env.PAYMENT_PROVIDER || 'generic').toLowerCase();
+  const apiUrl = process.env.PAYMENT_API_URL;
+  const apiKey = process.env.PAYMENT_API_KEY;
+  const secret = process.env.PAYMENT_SECRET;
+  if (!apiUrl || !apiKey) throw new Error('PAYMENT_API_URL ou PAYMENT_API_KEY manquant');
+
+  const externalRef = `HC-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
+  const body = {
+    provider,
+    amount: Math.round(toNumber(montant || facture?.solde || facture?.total || 0)),
+    currency: COMPANY.devise,
+    reference: externalRef,
+    customer_phone: normalizePhone(telephone || facture?.clients?.telephone || ''),
+    customer_name: facture?.clients?.entreprise_nom || facture?.clients?.nom || '',
+    description: `Paiement facture ${facture?.numero || externalRef}`,
+    callback_url: buildAppUrl(callbackPath),
+    return_url: buildAppUrl('/admin/login')
+  };
+
+  const signature = secret
+    ? crypto.createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex')
+    : '';
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      ...(signature ? { 'X-HydroConnecto-Signature': signature } : {})
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  let result;
+  try { result = text ? JSON.parse(text) : {}; } catch { result = { raw: text }; }
+  if (!response.ok) throw new Error(result.error || result.message || `Paiement HTTP ${response.status}`);
+  return { externalRef, request: body, response: result };
+}
+
+function verifyWebhookSignature(req) {
+  const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+  if (!secret) return true;
+  const sent = String(req.headers['x-payment-signature'] || req.headers['x-hydroconnecto-signature'] || '');
+  if (!sent) return false;
+  const expected = crypto.createHmac('sha256', secret).update(JSON.stringify(req.body || {})).digest('hex');
+  return safeCompare(sent, expected);
+}
+
 app.get(['/admin', '/admin/login'], sendIndexFile);
 
 app.get('/api/health', (req, res) => {
@@ -573,23 +879,20 @@ async function sendLoginSuccess(req, res, user, source = 'env') {
     permissions
   };
 
-  const secureCookie = process.env.NODE_ENV === 'production';
-
   res.cookie('hydro_admin', 'ok', {
+    ...secureCookieOptions(),
     signed: true,
     httpOnly: true,
-    sameSite: 'lax',
-    secure: secureCookie,
     maxAge: 1000 * 60 * 60 * 8
   });
 
   res.cookie('hydro_admin_user', Buffer.from(JSON.stringify(safeUser)).toString('base64url'), {
+    ...secureCookieOptions(),
     signed: true,
     httpOnly: true,
-    sameSite: 'lax',
-    secure: secureCookie,
     maxAge: 1000 * 60 * 60 * 8
   });
+  const csrfToken = createCsrfToken(res);
 
   try {
     await logAction(req, 'Connexion administrateur', 'auth', safeUser.id, {
@@ -601,10 +904,11 @@ async function sendLoginSuccess(req, res, user, source = 'env') {
     console.warn('Journal connexion non enregistré:', e.message);
   }
 
-  return res.json({ success: true, user: safeUser });
+  return res.json({ success: true, user: safeUser, csrfToken });
 }
 
 app.post('/api/auth/login', async (req, res) => {
+  if (!checkLoginRateLimit(req, res)) return;
   const email = String(req.body.email || '').trim().toLowerCase();
   const password = String(req.body.password || '').trim();
 
@@ -615,8 +919,11 @@ app.post('/api/auth/login', async (req, res) => {
   // 1) Compte directeur défini dans .env
   const adminEmail = String(process.env.ADMIN_EMAIL || 'admin@hydroconnecto.local').trim().toLowerCase();
   const adminPassword = String(process.env.ADMIN_PASSWORD || 'change-moi-123').trim();
+  const adminPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
 
-  if (email === adminEmail && password === adminPassword) {
+  const adminPasswordOk = adminPasswordHash ? verifyPassword(password, adminPasswordHash) : verifyPassword(password, adminPassword);
+  if (email === adminEmail && adminPasswordOk) {
+    clearLoginRateLimit(req);
     return sendLoginSuccess(req, res, {
       name: process.env.ADMIN_NAME || COMPANY.responsable,
       role: process.env.ADMIN_ROLE || 'directeur',
@@ -650,7 +957,17 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ error: 'Aucun mot de passe défini pour cet utilisateur' });
       }
 
-      if (password === dbPassword) {
+      if (verifyPassword(password, dbPassword)) {
+        if (!isPasswordHash(dbPassword)) {
+          try {
+            await supabase
+              .from('utilisateurs_admin')
+              .update({ password_temp: hashPassword(password), updated_at: new Date().toISOString() })
+              .eq('id', dbUser.id);
+          } catch (e) {
+            console.warn('Migration hash mot de passe non appliquée:', e.message);
+          }
+        }
         try {
           await supabase
             .from('utilisateurs_admin')
@@ -660,6 +977,7 @@ app.post('/api/auth/login', async (req, res) => {
           console.warn('Dernière connexion non mise à jour:', e.message);
         }
 
+        clearLoginRateLimit(req);
         return sendLoginSuccess(req, res, {
           id: dbUser.id,
           name: dbUser.nom_complet || dbUser.email,
@@ -679,13 +997,14 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/logout', async (req, res) => {
   if (isAdmin(req)) await logAction(req, 'Déconnexion administrateur', 'auth');
-  res.clearCookie('hydro_admin'); res.clearCookie('hydro_admin_user');
+  res.clearCookie('hydro_admin'); res.clearCookie('hydro_admin_user'); res.clearCookie(CSRF_COOKIE);
   res.json({ success: true });
 });
 app.get('/api/auth/me', async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ error: 'Non connecté' });
   const user = getAdminUser(req);
   user.permissions = await getEffectivePermissions(user);
+  createCsrfToken(res);
   res.json(user);
 });
 
@@ -724,7 +1043,7 @@ app.put('/api/profile', upload.single('photo'), asyncRoute(async (req, res) => {
   };
 
   if (req.body.password) {
-    payload.password_temp = String(req.body.password).trim();
+    payload.password_temp = hashPassword(String(req.body.password).trim());
     payload.must_change_password = false;
   }
 
@@ -756,6 +1075,12 @@ app.get('/api/storage/:bucket/*', asyncRoute(async (req, res) => {
 
   if (!bucket || !storagePath) {
     return res.status(400).send('Chemin média invalide');
+  }
+  if (!PUBLIC_STORAGE_BUCKETS.has(bucket)) {
+    if (!PRIVATE_STORAGE_BUCKETS.has(bucket)) return res.status(404).send('Bucket non autorisé');
+    if (!isAdmin(req)) return res.status(401).send('Connexion administrateur requise');
+    const allowed = await requirePermission(req, res, bucket === 'demandes-devis' ? 'demandes_devis.view' : 'documents.view');
+    if (!allowed) return;
   }
 
   const { data, error } = await supabase.storage.from(bucket).download(storagePath);
@@ -805,6 +1130,7 @@ app.post('/api/public/demandes-devis', upload.single('audio'), asyncRoute(async 
   const { data, error } = await supabase.from('demandes_devis').insert(payload).select('*').single();
   if (error) throw error;
   await logAction(req, 'Nouvelle demande de devis publique', 'demandes_devis', data.id, { nom: data.nom_complet, telephone: data.telephone });
+  await sendWhatsAppText(process.env.WHATSAPP_TO || COMPANY.whatsapp, `Nouvelle demande HydroConnecto\nClient: ${data.nom_complet || '-'}\nTéléphone: ${data.telephone || '-'}\nBesoin: ${besoin || 'Message vocal joint'}`, { type: 'demande_devis', id: data.id });
   res.status(201).json({ success: true, message: 'Votre demande a été envoyée avec succès.', demande: data });
 }, { admin: false }));
 
@@ -1235,6 +1561,15 @@ async function insertDocument(table, linesTable, lineFk, prefix, dateField, body
     if (lineError) throw lineError;
   }
   await logAction(req, `Création ${table === 'factures' ? 'facture' : 'devis'}`, table, data.id, { numero: data.numero, total: data.total });
+  try {
+    if (body.client_id) {
+      const { data: client } = await supabase.from('clients').select('nom, entreprise_nom, telephone, whatsapp').eq('id', body.client_id).maybeSingle();
+      const typeLabel = table === 'factures' ? 'facture' : 'devis';
+      await sendWhatsAppText(client?.whatsapp || client?.telephone, `HydroConnecto: votre ${typeLabel} ${data.numero} est créé.\nMontant: ${money(data.total)}\nContact: ${COMPANY.telephone}`, { type: typeLabel, id: data.id, numero: data.numero });
+    }
+  } catch (e) {
+    console.warn('Notification document non envoyée:', e.message);
+  }
   return data;
 }
 
@@ -1258,16 +1593,100 @@ app.post('/api/paiements', asyncRoute(async (req, res) => {
   const { data, error } = await supabase.from('paiements').insert(payload).select('*').single();
   if (error) throw error;
   if (payload.facture_id) {
-    const { data: facture } = await supabase.from('factures').select('montant_paye,total').eq('id', payload.facture_id).single();
+    const { data: facture } = await supabase.from('factures').select('numero,montant_paye,total,clients(nom, entreprise_nom, telephone, whatsapp)').eq('id', payload.facture_id).single();
     if (facture) {
       const montantPaye = toNumber(facture.montant_paye) + toNumber(payload.montant);
       const solde = Math.max(0, toNumber(facture.total) - montantPaye);
       await supabase.from('factures').update({ montant_paye: montantPaye, solde, statut: solde <= 0 ? 'payee' : 'impayee' }).eq('id', payload.facture_id);
+      await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, `HydroConnecto: paiement reçu pour la facture ${facture.numero}.\nMontant: ${money(payload.montant)}\nSolde restant: ${money(solde)}`, { type: 'paiement', id: data.id, facture_id: payload.facture_id });
     }
   }
   await logAction(req, 'Création reçu / paiement', 'paiements', data.id, { numero: data.numero_recu, montant: data.montant });
   res.status(201).json(data);
 }));
+
+app.post('/api/payments/initiate', asyncRoute(async (req, res) => {
+  const factureId = req.body.facture_id;
+  if (!factureId) return res.status(400).json({ error: 'facture_id requis' });
+  const { data: facture, error } = await supabase
+    .from('factures')
+    .select('*, clients(nom, entreprise_nom, telephone, whatsapp)')
+    .eq('id', factureId)
+    .single();
+  if (error) throw error;
+  const montant = toNumber(req.body.montant || facture.solde || facture.total);
+  if (montant <= 0) return res.status(400).json({ error: 'Montant de paiement invalide' });
+
+  const payment = await createPaymentRequest({
+    facture,
+    montant,
+    telephone: req.body.telephone || facture.clients?.whatsapp || facture.clients?.telephone
+  });
+
+  await insertBestEffort('payment_transactions', {
+    facture_id: factureId,
+    provider: process.env.PAYMENT_PROVIDER || 'generic',
+    external_reference: payment.externalRef,
+    montant,
+    devise: COMPANY.devise,
+    statut: 'initie',
+    request_payload: payment.request,
+    response_payload: payment.response
+  });
+
+  const checkoutUrl = payment.response.checkout_url || payment.response.payment_url || payment.response.url || '';
+  if (checkoutUrl) {
+    await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, `HydroConnecto: lien de paiement facture ${facture.numero}\nMontant: ${money(montant)}\n${checkoutUrl}`, { type: 'payment_link', facture_id: factureId, reference: payment.externalRef });
+  }
+  await logAction(req, 'Initialisation paiement API', 'factures', factureId, { numero: facture.numero, montant, reference: payment.externalRef });
+  res.status(201).json({ success: true, reference: payment.externalRef, checkout_url: checkoutUrl, provider_response: payment.response });
+}, { admin: true, permission: 'paiements.create' }));
+
+app.post('/api/webhooks/payment', asyncRoute(async (req, res) => {
+  if (!verifyWebhookSignature(req)) return res.status(401).json({ error: 'Signature webhook invalide' });
+  const body = req.body || {};
+  const reference = String(body.reference || body.external_reference || body.transaction_id || '').trim();
+  const status = String(body.status || body.statut || '').toLowerCase();
+  const paid = ['paid', 'payee', 'success', 'successful', 'completed', 'valide'].includes(status);
+
+  await insertBestEffort('payment_webhook_events', {
+    provider: process.env.PAYMENT_PROVIDER || 'generic',
+    external_reference: reference,
+    event_type: status || 'unknown',
+    payload: body
+  });
+
+  if (!paid || !reference) return res.json({ received: true, applied: false });
+
+  const { data: tx } = await supabase
+    .from('payment_transactions')
+    .select('*, factures(numero,total,montant_paye,solde,clients(telephone,whatsapp))')
+    .eq('external_reference', reference)
+    .maybeSingle();
+
+  if (!tx?.facture_id) return res.json({ received: true, applied: false, reason: 'transaction_not_found' });
+
+  const montant = toNumber(body.amount || body.montant || tx.montant);
+  const numeroRecu = await nextNumero('REC', 'paiements');
+  const { data: paiement, error } = await supabase.from('paiements').insert({
+    facture_id: tx.facture_id,
+    numero_recu: numeroRecu,
+    montant,
+    methode: process.env.PAYMENT_PROVIDER || 'api',
+    reference,
+    date_paiement: new Date().toISOString().slice(0, 10),
+    notes: 'Paiement confirmé par webhook API'
+  }).select('*').single();
+  if (error) throw error;
+
+  const facture = tx.factures || {};
+  const montantPaye = toNumber(facture.montant_paye) + montant;
+  const solde = Math.max(0, toNumber(facture.total) - montantPaye);
+  await supabase.from('factures').update({ montant_paye: montantPaye, solde, statut: solde <= 0 ? 'payee' : 'impayee' }).eq('id', tx.facture_id);
+  await supabase.from('payment_transactions').update({ statut: 'payee', webhook_payload: body, paiement_id: paiement.id, updated_at: new Date().toISOString() }).eq('id', tx.id);
+  await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, `HydroConnecto: paiement confirmé pour la facture ${facture.numero}.\nMontant: ${money(montant)}\nReçu: ${numeroRecu}`, { type: 'payment_webhook', paiement_id: paiement.id, reference });
+  res.json({ received: true, applied: true, paiement_id: paiement.id });
+}, { admin: false }));
 
 
 
@@ -1693,13 +2112,14 @@ app.get('/api/users', asyncRoute(async (req, res) => {
 app.post('/api/users', asyncRoute(async (req, res) => {
   const entreprise = await getEntreprise();
   const extraPermissions = parsePermissionList(req.body.permissions_extra);
+  const passwordTemp = String(req.body.password_temp || '').trim();
   const payload = {
     entreprise_id: entreprise.id,
     nom_complet: req.body.nom_complet,
     email: String(req.body.email || '').trim().toLowerCase(),
     role: req.body.role || 'lecture_seule',
     statut: req.body.statut || 'en_attente',
-    password_temp: req.body.password_temp || null,
+    password_temp: passwordTemp ? hashPassword(passwordTemp) : null,
     permissions_extra: extraPermissions,
     telephone: req.body.telephone || '',
     adresse: req.body.adresse || '',
@@ -1738,7 +2158,7 @@ app.put('/api/users/:id', asyncRoute(async (req, res) => {
     updated_at: new Date().toISOString()
   };
   if (req.body.password_temp) {
-    payload.password_temp = req.body.password_temp;
+    payload.password_temp = hashPassword(String(req.body.password_temp).trim());
     payload.must_change_password = true;
   }
 
