@@ -113,21 +113,46 @@
       <a id="adminToSiteBtn" class="admin-fixed-site-link" href="/">← Site web</a>
       <aside class="admin-sidebar">
         <div class="admin-brand"><img class="admin-logo" src="/assets/logo-hydroconnecto.png" alt="HydroConnecto" /><strong>ERP privé</strong></div>
-        <button class="admin-tab active" data-admin="dashboard">Tableau de bord</button>
-        <button class="admin-tab" data-admin="demandes">Demandes de devis <span id="demandeBadge" class="badge-small hidden">0</span></button>
-        <button class="admin-tab" data-admin="clients">Clients</button>
-        <button class="admin-tab" data-admin="engins">Engins</button>
-        <button class="admin-tab" data-admin="produits">Produits</button>
-        <button class="admin-tab" data-admin="services">Services</button>
-        <button class="admin-tab" data-admin="interventions">Interventions</button>
-        <button class="admin-tab" data-admin="documents">Devis / Factures / Reçus</button>
-        <button class="admin-tab" data-admin="galerieAdmin">Galerie</button>
-        <button class="admin-tab" data-admin="equipeAdmin">Équipe</button>
-        <button class="admin-tab" data-admin="journal">Journal des actions</button>
-        <button class="admin-tab" data-admin="fournisseurs">Fournisseurs / commandes</button>
-        <button class="admin-tab" data-admin="usersAdmin">Utilisateurs / rôles</button>
-        <button class="admin-tab" data-admin="exports">Exports</button>
-        <button class="admin-tab" data-admin="profile">Mon profil</button>
+        <nav class="admin-nav-groups" aria-label="Navigation administration">
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Pilotage</p>
+            <button class="admin-tab active" data-admin="dashboard">Tableau de bord</button>
+          </div>
+
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Gestion comptable et administrative</p>
+            <button class="admin-tab" data-admin="demandes">Demandes de devis <span id="demandeBadge" class="badge-small hidden">0</span></button>
+            <button class="admin-tab" data-admin="clients">Clients</button>
+            <button class="admin-tab" data-admin="documents">Devis / Factures / Reçus</button>
+          </div>
+
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Atelier et interventions</p>
+            <button class="admin-tab" data-admin="engins">Engins</button>
+            <button class="admin-tab" data-admin="interventions">Interventions</button>
+            <button class="admin-tab" data-admin="services">Services</button>
+            <button class="admin-tab" data-admin="equipeAdmin">Équipe atelier</button>
+          </div>
+
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Gestion de stock et achats</p>
+            <button class="admin-tab" data-admin="produits">Produits / Stock</button>
+            <button class="admin-tab" data-admin="fournisseurs">Fournisseurs / Commandes</button>
+          </div>
+
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Administration</p>
+            <button class="admin-tab" data-admin="usersAdmin">Utilisateurs / Rôles</button>
+            <button class="admin-tab" data-admin="journal">Journal des actions</button>
+            <button class="admin-tab" data-admin="exports">Exports</button>
+            <button class="admin-tab" data-admin="profile">Mon profil</button>
+          </div>
+
+          <div class="admin-menu-group" data-menu-group>
+            <p class="admin-menu-heading">Site public</p>
+            <button class="admin-tab" data-admin="galerieAdmin">Galerie</button>
+          </div>
+        </nav>
         <button class="btn danger ghost" id="logoutBtn">Déconnexion</button>
       </aside>
 

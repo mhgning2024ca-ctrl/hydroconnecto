@@ -87,6 +87,10 @@ label { font-weight: 700; color: var(--night); display: grid; gap: 7px; }
 .admin-sidebar { background: var(--night); color: white; padding: 18px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .admin-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
 .admin-logo { width: 52px; height: 52px; object-fit: contain; border-radius: 12px; background: white; padding: 3px; }
+.admin-nav-groups { display: grid; gap: 14px; }
+.admin-menu-group { display: grid; gap: 6px; padding-top: 4px; }
+.admin-menu-group + .admin-menu-group { border-top: 1px solid rgba(255,255,255,.14); padding-top: 13px; }
+.admin-menu-heading { margin: 0 0 2px; color: rgba(255,255,255,.62); font-size: 11px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
 .admin-tab { border: 0; background: transparent; color: white; text-align: left; padding: 12px 14px; border-radius: 12px; font-weight: 800; cursor: pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .admin-tab:hover, .admin-tab.active { background: var(--yellow); color: var(--night); }
 .badge-small { background: var(--danger); color: white; border-radius: 999px; padding: 2px 8px; font-size: 12px; }

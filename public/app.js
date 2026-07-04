@@ -83,12 +83,20 @@ function applyAdminPermissions() {
     btn.classList.toggle('hidden', !allowed);
     btn.disabled = !allowed;
   });
+  updateAdminMenuGroups();
 
   const active = qs('.admin-tab.active');
   if (active && active.classList.contains('hidden')) {
     const firstAllowed = qsa('.admin-tab[data-admin]').find(btn => !btn.classList.contains('hidden'));
     if (firstAllowed) firstAllowed.click();
   }
+}
+
+function updateAdminMenuGroups() {
+  qsa('[data-menu-group]').forEach(group => {
+    const hasVisibleItem = qsa('.admin-tab[data-admin]', group).some(btn => !btn.classList.contains('hidden'));
+    group.classList.toggle('hidden', !hasVisibleItem);
+  });
 }
 
 
