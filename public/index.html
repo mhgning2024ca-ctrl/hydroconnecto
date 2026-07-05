@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HydroConnecto ERP Pro v2.2.2.6 PRO</title>
-  <link rel="stylesheet" href="/styles.css?v=2223-pro" />
+  <title>HydroConnecto ERP Pro v2.2.2.8 PRO</title>
+  <link rel="stylesheet" href="/styles.css?v=2228-pro" />
 </head>
 <body>
   <header class="site-header" id="publicHeader">
@@ -19,6 +19,7 @@
       <a href="#galerie">Galerie</a>
       <a href="#equipe">Équipe</a>
       <a href="#devis-public">Demande de devis</a>
+      <a href="#espace-client">Espace client</a>
       <a href="#contact">Contact</a>
       <a class="employee-link" href="/admin/login">Employés</a>
       <a class="whatsapp" href="https://wa.me/221777436153" target="_blank" rel="noreferrer">WhatsApp</a>
@@ -81,6 +82,30 @@
         <button class="btn primary" type="submit">Envoyer la demande</button>
         <p id="publicQuoteMessage" class="form-message hidden"></p>
       </form>
+    </section>
+
+    <section id="espace-client" class="public-section section-pad client-portal-section">
+      <div class="section-head">
+        <p class="eyebrow">Espace client</p>
+        <h2>Payer une facture en ligne</h2>
+        <p>Le client se connecte avec son téléphone, consulte ses factures et lance un paiement Wave, Orange Money, virement ou carte selon la passerelle configurée.</p>
+      </div>
+      <div class="client-portal-grid">
+        <form id="clientPortalRequestForm" class="public-form">
+          <h3>Recevoir un code</h3>
+          <label>Téléphone / WhatsApp<input name="telephone" required placeholder="+221 ..." /></label>
+          <button class="btn primary" type="submit">Envoyer le code</button>
+          <p id="clientPortalRequestMsg" class="form-message hidden"></p>
+        </form>
+        <form id="clientPortalVerifyForm" class="public-form">
+          <h3>Connexion client</h3>
+          <label>Téléphone / WhatsApp<input name="telephone" required placeholder="+221 ..." /></label>
+          <label>Code reçu<input name="code" required inputmode="numeric" maxlength="6" placeholder="123456" /></label>
+          <button class="btn secondary" type="submit">Voir mes factures</button>
+          <p id="clientPortalVerifyMsg" class="form-message hidden"></p>
+        </form>
+      </div>
+      <div id="clientPortalInvoices" class="list-panel client-portal-invoices hidden"></div>
     </section>
 
     <section id="contact" class="public-section section-pad contact-section">
@@ -171,7 +196,7 @@
       <section class="admin-content">
         <div class="admin-topbar">
           <button class="hamburger admin-menu" id="adminMenuBtn">☰</button>
-          <div><strong>HydroConnecto ERP Pro v2.2.2.6 PRO</strong><small id="adminUser">Directeur</small></div>
+          <div><strong>HydroConnecto ERP Pro v2.2.2.8 PRO</strong><small id="adminUser">Directeur</small></div>
         </div>
 
         <article id="admin-dashboard" class="admin-page active">
@@ -266,6 +291,7 @@
             <button type="button" class="btn small secondary" id="quickClientBtn">+ Nouveau client</button>
             <label>Statut<select name="statut"><option value="planifiee">Planifiée</option><option value="assignee">Assignée</option><option value="debut_intervention">Début intervention</option><option value="en_cours">En cours</option><option value="pause">Pause</option><option value="fin_intervention">Fin intervention</option><option value="terminee">Terminée</option><option value="facturee">Facturée</option><option value="annulee">Annulée</option></select></label>
             <label>Date<input name="date_intervention" type="date" /></label>
+            <label class="span-2">Lieu d’intervention<input name="lieu_intervention" placeholder="Atelier, chantier, adresse client..." /></label>
             <label class="span-2">Problème signalé<textarea name="probleme_signale"></textarea></label>
             <label class="span-2">Diagnostic<textarea name="diagnostic"></textarea></label>
             <label class="span-2">Travaux réalisés<textarea name="travaux_realises"></textarea></label>
@@ -286,6 +312,7 @@
 
             <button class="btn primary" type="submit">+ Créer intervention</button>
           </form>
+          <div id="interventionWorkflowPanel" class="panel workflow-panel hidden"></div>
           <div class="toolbar"><input id="interventionSearch" placeholder="Rechercher intervention, client, engin..." /><select id="interventionFilter"><option value="">Tous statuts</option><option value="planifiee">Planifiée</option><option value="assignee">Assignée</option><option value="debut_intervention">Début intervention</option><option value="en_cours">En cours</option><option value="fin_intervention">Fin intervention</option><option value="terminee">Terminée</option><option value="facturee">Facturée</option><option value="annulee">Annulée</option></select><select id="interventionSort"><option value="date_desc">Plus récentes</option><option value="date_asc">Plus anciennes</option><option value="client_asc">Client A-Z</option><option value="statut_asc">Statut A-Z</option></select></div>
           <div class="list-panel" id="interventionsList"></div>
         </article>
@@ -428,6 +455,8 @@
                 <option value="interventions.*">Interventions complètes</option>
                 <option value="interventions.assign_team">Assignation équipe</option>
                 <option value="interventions.change_schedule">Planification intervention</option>
+                <option value="interventions.validate">Validation intervention</option>
+                <option value="interventions.generate_invoice">Facturation depuis intervention</option>
                 <option value="documents.*">Documents</option>
                 <option value="factures.*">Factures</option>
                 <option value="paiements.*">Paiements / reçus</option>
@@ -438,6 +467,8 @@
                 <option value="users.*">Utilisateurs / rôles</option>
                 <option value="journal.view">Journal</option>
                 <option value="exports.*">Exports</option>
+                <option value="notifications.view">Notifications internes</option>
+                <option value="entreprise.update">Cachet / signature entreprise</option>
               </select>
             </label>
             <label>Début accès extra<input name="permissions_date_debut" type="datetime-local" /></label>
@@ -462,6 +493,12 @@
             <label class="span-2">Nouveau mot de passe<input name="password" type="password" placeholder="Laisser vide pour ne pas changer" /></label>
             <button class="btn primary" type="submit">Enregistrer mon profil</button>
           </form>
+          <form id="entrepriseAssetsForm" class="form-grid panel" enctype="multipart/form-data">
+            <h3 class="span-2">Cachet et signature des documents</h3>
+            <label>Cachet entreprise<input name="cachet" type="file" accept="image/*" /></label>
+            <label>Signature autorisée<input name="signature" type="file" accept="image/*" /></label>
+            <button class="btn primary" type="submit">Enregistrer cachet / signature</button>
+          </form>
           <div class="panel" id="profilePermissionsBox"></div>
         </article>
 
@@ -485,6 +522,6 @@
   </footer>
 
   <dialog id="quickModal" class="modal"><div id="quickModalContent"></div></dialog>
-  <script src="/app.js?v=2223-pro"></script>
+  <script src="/app.js?v=2228-pro"></script>
 </body>
 </html>

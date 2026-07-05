@@ -1575,3 +1575,108 @@ svg {
     font-size: 24px !important;
   }
 }
+
+/* ===== HYDROCONNECTO PRO v2.2.2.8 — workflow intervention et espace client ===== */
+.client-portal-section {
+  background: #f7fafc;
+}
+
+.client-portal-grid,
+.workflow-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.client-portal-invoices {
+  margin-top: 20px;
+}
+
+.workflow-panel {
+  margin: 18px 0;
+  border: 1px solid rgba(11, 31, 58, .12);
+}
+
+.workflow-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.workflow-head h3,
+.workflow-panel h3,
+.workflow-step h4 {
+  margin: 0 0 6px;
+}
+
+.workflow-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.workflow-actions-main {
+  margin-bottom: 16px;
+}
+
+.workflow-steps-list {
+  display: grid;
+  gap: 12px;
+}
+
+.workflow-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, .8fr);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(11, 31, 58, .1);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.workflow-price-grid,
+.workflow-product-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workflow-product-row {
+  grid-template-columns: minmax(180px, 1.3fr) minmax(70px, .5fr) minmax(95px, .7fr) minmax(95px, .7fr) auto;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.workflow-validation-box {
+  margin-top: 16px;
+}
+
+.workflow-intervention-card .status-pill + .status-pill {
+  margin-left: 6px;
+}
+
+.sub-panel.compact {
+  padding: 12px;
+}
+
+@media (max-width: 900px) {
+  .client-portal-grid,
+  .workflow-columns,
+  .workflow-step,
+  .workflow-product-row,
+  .workflow-price-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .workflow-head {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-panel {
+    margin-top: 14px;
+  }
+}

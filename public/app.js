@@ -834,7 +834,7 @@ renderGalerieAdmin = function() {
 
 
 // === CORRECTIF INTÉGRAL v2.2.2.6 : rendu forcé et actions visibles partout ===
-const HC_VERSION_FIX = 'v2.2.2.6-correctif-integral';
+const HC_VERSION_FIX = 'v2.2.2.8-workflow-client';
 
 function dateValue(x){ return new Date(x.created_at || x.date_facture || x.date_devis || x.date_paiement || 0).getTime() || 0; }
 
@@ -893,7 +893,7 @@ function initFinalFixListeners(){
   ['documentSearch'].forEach(id => $(id)?.addEventListener('input', renderDocumentsHistory));
   ['documentSort'].forEach(id => $(id)?.addEventListener('change', renderDocumentsHistory));
   const topbar = document.querySelector('.admin-topbar strong');
-  if (topbar) topbar.textContent = 'HydroConnecto ERP Pro v2.2.2.6 CORRECTIF INTÉGRAL';
+  if (topbar) topbar.textContent = 'HydroConnecto ERP Pro v2.2.2.8 WORKFLOW CLIENT';
 }
 
 // Lancement après chargement de toutes les corrections v2.2.2.6
@@ -902,7 +902,7 @@ initFinalFixListeners();
 
 // === HydroConnecto v2.2.2.6 GALERIE CORRIGÉE : actions complètes + 8 services exacts ===
 (function hydroFinal2214Legacy(){
-  const FINAL_VERSION = 'HydroConnecto ERP Pro v2.2.2.6 PRO';
+  const FINAL_VERSION = 'HydroConnecto ERP Pro v2.2.2.8 PRO';
   const finalTopbar = document.querySelector('.admin-topbar strong');
   if (finalTopbar) finalTopbar.textContent = FINAL_VERSION;
 
@@ -1089,7 +1089,7 @@ initFinalFixListeners();
 
 // === HydroConnecto v2.2.2.6 GALERIE CORRIGÉE : corrections imposées par le client ===
 (function hydroFinal2214Definitif(){
-  const FINAL_VERSION = 'HydroConnecto ERP Pro v2.2.2.6 PRO';
+  const FINAL_VERSION = 'HydroConnecto ERP Pro v2.2.2.8 PRO';
   const topbar = document.querySelector('.admin-topbar strong');
   if (topbar) topbar.textContent = FINAL_VERSION;
 
@@ -1316,7 +1316,7 @@ initFinalFixListeners();
 
 // === HydroConnecto v2.2.2.6 : CORRECTION RÉELLE GALERIE + ACCUEIL + ADMIN ===
 (function(){
-  const VERSION = 'HydroConnecto ERP Pro v2.2.2.6 PRO';
+  const VERSION = 'HydroConnecto ERP Pro v2.2.2.8 PRO';
 
   const _showPublic = window.showPublic || showPublic;
   const _showLogin = window.showLogin || showLogin;
@@ -1541,6 +1541,8 @@ const EXTRA_PERMISSION_LABELS = {
   'interventions.*': 'Interventions complètes',
   'interventions.assign_team': 'Assignation équipe',
   'interventions.change_schedule': 'Planification intervention',
+  'interventions.validate': 'Validation intervention',
+  'interventions.generate_invoice': 'Facturation depuis intervention',
   'documents.*': 'Documents',
   'factures.*': 'Factures',
   'paiements.*': 'Paiements / reçus',
@@ -1550,7 +1552,9 @@ const EXTRA_PERMISSION_LABELS = {
   'commandes_fournisseurs.*': 'Commandes fournisseurs',
   'users.*': 'Utilisateurs / rôles',
   'journal.view': 'Journal',
-  'exports.*': 'Exports'
+  'exports.*': 'Exports',
+  'notifications.view': 'Notifications internes',
+  'entreprise.update': 'Cachet / signature entreprise'
 };
 
 function parseList(value) {
@@ -1875,4 +1879,398 @@ setTimeout(() => {
   });
 
   $('fournisseurSearch')?.addEventListener('input', renderFournisseurs);
+}, 0);
+
+// ===== v2.2.2.8 workflow intervention, validation, acompte et espace client =====
+state.currentWorkflow = null;
+
+const workflowOldLoadPublicData = loadPublicData;
+loadPublicData = async function loadPublicDataV2228() {
+  try { await api('/api/config'); } catch (e) { console.warn(e); }
+  await workflowOldLoadPublicData();
+  try { await loadClientPortalSession(); } catch {}
+};
+
+const workflowOldEditIntervention = window.editIntervention;
+window.editIntervention = function editInterventionV2228(id) {
+  workflowOldEditIntervention?.(id);
+  const intervention = (state.interventions || []).find(x => x.id === id);
+  const f = $('interventionForm');
+  if (f?.lieu_intervention && intervention) f.lieu_intervention.value = intervention.lieu_intervention || '';
+};
+
+const workflowOldLoadProfile = loadProfile;
+loadProfile = async function loadProfileV2228() {
+  await workflowOldLoadProfile();
+  const canUpdateEntreprise = hasUiPermission('entreprise.update') || hasUiPermission('entreprise.*') || hasUiPermission('*');
+  $('entrepriseAssetsForm')?.classList.toggle('hidden', !canUpdateEntreprise);
+};
+
+function workflowServiceOptions(selected = '') {
+  const services = (state.services || []).map(s => `<option value="${escapeHtml(s.id)}" ${s.id === selected ? 'selected' : ''}>${escapeHtml(s.nom)} - ${money(s.prix_unitaire || 10000)}</option>`).join('');
+  return `<option value="">Choisir un service</option>${services}<option value="autre">Autre service</option>`;
+}
+
+function workflowProductOptions(selected = '') {
+  return `<option value="">Aucun produit</option>` + (state.produits || []).map(p => `<option value="${escapeHtml(p.id)}" data-price="${escapeHtml(p.prix_unitaire || 15000)}" ${p.id === selected ? 'selected' : ''}>${escapeHtml(p.nom)} - ${money(p.prix_unitaire || 15000)}</option>`).join('');
+}
+
+function parseWorkflowProducts(value) {
+  if (Array.isArray(value)) return value;
+  try { return JSON.parse(value || '[]'); } catch { return []; }
+}
+
+function collectWorkflowProductLines(root = document) {
+  return qsa('.workflow-product-row', root).map(row => {
+    const select = qs('.workflow-product-select', row);
+    const option = select?.selectedOptions?.[0];
+    const product = (state.produits || []).find(p => p.id === select?.value);
+    return {
+      produit_id: select?.value || null,
+      nom: product?.nom || option?.textContent?.split(' - ')[0] || 'Produit',
+      quantite: Number(qs('.workflow-product-qty', row)?.value || 0),
+      prix_unitaire: Number(qs('.workflow-product-price', row)?.value || option?.dataset.price || 15000),
+      remise: Number(qs('.workflow-product-remise', row)?.value || 0)
+    };
+  }).filter(p => p.produit_id && p.quantite > 0);
+}
+
+window.workflowProductChanged = function(select) {
+  const row = select.closest('.workflow-product-row');
+  const product = (state.produits || []).find(p => p.id === select.value);
+  const price = product?.prix_unitaire || select.selectedOptions?.[0]?.dataset.price || 15000;
+  const input = qs('.workflow-product-price', row);
+  if (input) input.value = price;
+};
+
+window.addWorkflowProductRow = function(containerId = 'workflowProducts') {
+  const container = $(containerId);
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'workflow-product-row';
+  row.innerHTML = `
+    <label>Produit<select class="workflow-product-select" onchange="workflowProductChanged(this)">${workflowProductOptions()}</select></label>
+    <label>Qté<input class="workflow-product-qty" type="number" step="0.01" min="0" value="1" /></label>
+    <label>Prix<input class="workflow-product-price" type="number" step="0.01" min="0" value="15000" /></label>
+    <label>Remise<input class="workflow-product-remise" type="number" step="0.01" min="0" value="0" /></label>
+    <button type="button" class="btn small danger" onclick="this.closest('.workflow-product-row').remove()">Retirer</button>`;
+  container.appendChild(row);
+};
+
+function workflowStepCard(step) {
+  const products = parseWorkflowProducts(step.produit_lignes);
+  const productText = products.length ? products.map(p => `${p.nom || 'Produit'} x${p.quantite || 1} (${money(p.prix_unitaire || 15000)})`).join(' | ') : 'Aucun produit';
+  const before = step.photo_avant_url ? `<a class="btn small secondary" href="${escapeHtml(step.photo_avant_url)}" target="_blank" rel="noreferrer">Photo avant</a>` : '';
+  const after = step.photo_apres_url ? `<a class="btn small secondary" href="${escapeHtml(step.photo_apres_url)}" target="_blank" rel="noreferrer">Photo après</a>` : '';
+  return `<article class="workflow-step" data-step-id="${escapeHtml(step.id)}">
+    <div>
+      <h4>Étape ${escapeHtml(step.ordre || '')} - ${escapeHtml(step.service_nom || 'Service')}</h4>
+      <p class="meta">${escapeHtml(statusLabel(step.statut))} • Produits : ${escapeHtml(productText)}</p>
+      ${step.notes ? `<p>${escapeHtml(step.notes)}</p>` : ''}
+      ${step.rapport ? `<p class="meta"><strong>Rapport :</strong> ${escapeHtml(step.rapport)}</p>` : ''}
+      <div class="item-actions">${before}${after}</div>
+    </div>
+    <div class="workflow-price-grid">
+      <label>Prix service<input class="workflow-step-price" type="number" step="0.01" value="${escapeHtml(step.prix_service || 10000)}" /></label>
+      <label>Remise<select class="workflow-step-remise-type"><option value="montant" ${step.remise_type !== 'pourcentage' ? 'selected' : ''}>Montant</option><option value="pourcentage" ${step.remise_type === 'pourcentage' ? 'selected' : ''}>Pourcentage</option></select></label>
+      <label>Valeur remise<input class="workflow-step-remise-value" type="number" step="0.01" value="${escapeHtml(step.remise_valeur || 0)}" /></label>
+    </div>
+  </article>`;
+}
+
+function renderWorkflowPanel(workflow) {
+  const panel = $('interventionWorkflowPanel');
+  if (!panel) return;
+  state.currentWorkflow = workflow;
+  const client = workflow.clients?.entreprise_nom || workflow.clients?.nom || 'Client non renseigné';
+  const engin = [workflow.engins?.type_engin, workflow.engins?.marque, workflow.engins?.modele].filter(Boolean).join(' ') || 'Engin non renseigné';
+  const steps = workflow.steps || [];
+  panel.classList.remove('hidden');
+  panel.innerHTML = `
+    <div class="workflow-head">
+      <div>
+        <p class="eyebrow">Workflow intervention</p>
+        <h3>${escapeHtml(workflow.numero)} - ${escapeHtml(client)}</h3>
+        <p class="meta">${escapeHtml(engin)} • ${escapeHtml(workflow.date_intervention || '')} • ${escapeHtml(workflow.lieu_intervention || 'Lieu à confirmer')}</p>
+      </div>
+      <button class="btn small secondary" type="button" onclick="$('interventionWorkflowPanel').classList.add('hidden')">Fermer</button>
+    </div>
+    <div class="workflow-status-line">
+      <span class="status-pill">${escapeHtml(statusLabel(workflow.statut))}</span>
+      <span class="status-pill">${escapeHtml(statusLabel(workflow.workflow_statut || 'workflow'))}</span>
+      ${workflow.factures?.numero ? `<span class="status-pill ok">Facture ${escapeHtml(workflow.factures.numero)}</span>` : ''}
+    </div>
+    <div class="workflow-actions-main item-actions">
+      <button class="btn small secondary" onclick="startWorkflow('${workflow.id}')">Démarrer / continuer</button>
+      <button class="btn small success" onclick="completeWorkflow('${workflow.id}')">Terminer et envoyer validation</button>
+      <button class="btn small secondary" onclick="reopenWorkflow('${workflow.id}')">Relancer en cours</button>
+      <button class="btn small primary" onclick="validateWorkflow('${workflow.id}')">Valider admin</button>
+      <button class="btn small success" onclick="generateWorkflowInvoice('${workflow.id}')">Générer facture</button>
+      ${workflow.facture_id ? `<button class="btn small secondary" onclick="sendFactureToClient('${workflow.facture_id}')">Envoyer facture</button>` : ''}
+    </div>
+    <div class="workflow-columns">
+      <form id="workflowStepForm" class="form-grid sub-panel" enctype="multipart/form-data">
+        <h3 class="span-2">Ajouter une étape</h3>
+        <label>Service réalisé<select name="service_id" id="workflowServiceSelect">${workflowServiceOptions()}</select></label>
+        <label id="workflowServiceOtherWrap">Autre service<input name="service_autre" placeholder="Nom du service si absent de la liste" /></label>
+        <label>Prix service<input name="prix_service" type="number" step="0.01" value="10000" /></label>
+        <label>Statut<select name="statut"><option value="terminee">Étape terminée</option><option value="en_cours">En cours</option><option value="a_faire">À faire</option></select></label>
+        <label class="span-2">Notes de l’étape<textarea name="notes"></textarea></label>
+        <label class="span-2">Rapport étape<textarea name="rapport"></textarea></label>
+        <label>Photo avant<input name="photo_avant" type="file" accept="image/*" /></label>
+        <label>Photo après<input name="photo_apres" type="file" accept="image/*" /></label>
+        <div class="span-2 sub-panel compact">
+          <h4>Produits utilisés</h4>
+          <div id="workflowProducts"></div>
+          <button class="btn small secondary" type="button" onclick="addWorkflowProductRow()">Ajouter produit</button>
+        </div>
+        <button class="btn primary" type="submit">Enregistrer étape</button>
+      </form>
+      <div class="sub-panel">
+        <h3>Étapes enregistrées</h3>
+        <div class="workflow-steps-list">${steps.length ? steps.map(workflowStepCard).join('') : '<p class="meta">Aucune étape enregistrée.</p>'}</div>
+      </div>
+    </div>
+    <div class="form-grid sub-panel workflow-validation-box">
+      <h3 class="span-2">Validation et facturation</h3>
+      <label class="span-2">Rapport responsable<textarea id="workflowRapportResponsable">${escapeHtml(workflow.rapport_responsable || '')}</textarea></label>
+      <label>Promotion globale (%)<input id="workflowPromotion" type="number" step="0.01" min="0" max="100" value="${escapeHtml(workflow.promotion_pourcentage || 0)}" /></label>
+      <label>Taxe facture (%)<input id="workflowTaxe" type="number" step="0.01" min="0" value="0" /></label>
+      <label>Acompte / down payment<input id="workflowAcompte" type="number" step="0.01" min="0" value="0" /></label>
+      <label>Date limite paiement<input id="workflowDueDate" type="date" /></label>
+      <label class="span-2">Notes validation<textarea id="workflowValidationNotes">${escapeHtml(workflow.validation_admin_notes || '')}</textarea></label>
+    </div>`;
+
+  $('workflowServiceSelect')?.addEventListener('change', e => {
+    const service = (state.services || []).find(s => s.id === e.target.value);
+    const price = qs('[name="prix_service"]', $('workflowStepForm'));
+    if (service && price) price.value = service.prix_unitaire || 10000;
+    $('workflowServiceOtherWrap')?.classList.toggle('hidden', e.target.value !== 'autre');
+  });
+  $('workflowServiceOtherWrap')?.classList.add('hidden');
+  $('workflowStepForm')?.addEventListener('submit', saveWorkflowStep);
+}
+
+function collectWorkflowStepAdjustments() {
+  return qsa('.workflow-step').map(row => ({
+    id: row.dataset.stepId,
+    prix_service: qs('.workflow-step-price', row)?.value || 10000,
+    remise_type: qs('.workflow-step-remise-type', row)?.value || 'montant',
+    remise_valeur: qs('.workflow-step-remise-value', row)?.value || 0
+  }));
+}
+
+window.openInterventionWorkflow = async function(id) {
+  try {
+    const workflow = await api(`/api/interventions/${id}/workflow`);
+    renderWorkflowPanel(workflow);
+    $('interventionWorkflowPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) { toast(err.message); }
+};
+
+window.startWorkflow = async function(id) {
+  try {
+    const workflow = await api(`/api/interventions/${id}/start`, { method: 'POST' });
+    renderWorkflowPanel(workflow);
+    await loadInterventions();
+    toast('Intervention démarrée.');
+  } catch (err) { toast(err.message); }
+};
+
+async function saveWorkflowStep(e) {
+  e.preventDefault();
+  const id = state.currentWorkflow?.id;
+  if (!id) return;
+  try {
+    const data = new FormData(e.target);
+    data.set('produit_lignes', JSON.stringify(collectWorkflowProductLines(e.target)));
+    const workflow = await api(`/api/interventions/${id}/steps`, { method: 'POST', body: data });
+    renderWorkflowPanel(workflow);
+    await loadInterventions();
+    toast('Étape enregistrée.');
+  } catch (err) { toast(err.message); }
+}
+
+window.completeWorkflow = async function(id) {
+  try {
+    const workflow = await jsonApi(`/api/interventions/${id}/complete`, 'POST', { rapport_responsable: $('workflowRapportResponsable')?.value || '' });
+    renderWorkflowPanel(workflow);
+    await loadInterventions();
+    await loadDashboard();
+    toast('Intervention envoyée en validation.');
+  } catch (err) { toast(err.message); }
+};
+
+window.reopenWorkflow = async function(id) {
+  try {
+    const workflow = await api(`/api/interventions/${id}/reopen`, { method: 'POST' });
+    renderWorkflowPanel(workflow);
+    await loadInterventions();
+    toast('Intervention relancée en cours.');
+  } catch (err) { toast(err.message); }
+};
+
+window.validateWorkflow = async function(id) {
+  try {
+    const workflow = await jsonApi(`/api/interventions/${id}/validate`, 'POST', {
+      promotion_pourcentage: $('workflowPromotion')?.value || 0,
+      validation_admin_notes: $('workflowValidationNotes')?.value || '',
+      steps: collectWorkflowStepAdjustments()
+    });
+    renderWorkflowPanel(workflow);
+    await loadDashboard();
+    toast('Intervention validée pour facturation.');
+  } catch (err) { toast(err.message); }
+};
+
+window.generateWorkflowInvoice = async function(id) {
+  try {
+    const result = await jsonApi(`/api/interventions/${id}/generate-invoice`, 'POST', {
+      promotion_pourcentage: $('workflowPromotion')?.value || 0,
+      taxe_pourcentage: $('workflowTaxe')?.value || 0,
+      acompte_initial: $('workflowAcompte')?.value || 0,
+      date_limite_paiement: $('workflowDueDate')?.value || null,
+      notes: $('workflowValidationNotes')?.value || ''
+    });
+    await loadFactures();
+    await loadInterventions();
+    await openInterventionWorkflow(id);
+    toast(`Facture générée : ${result.facture?.numero || ''}`);
+  } catch (err) { toast(err.message); }
+};
+
+window.sendFactureToClient = async function(id) {
+  try {
+    const result = await api(`/api/factures/${id}/send`, { method: 'POST' });
+    toast(`Facture envoyée. Lien: ${result.facture_url || ''}`);
+  } catch (err) { toast(err.message); }
+};
+
+const renderInterventionsBeforeWorkflow = renderInterventions;
+renderInterventions = function renderInterventionsV2228() {
+  if (!$('interventionsList')) return renderInterventionsBeforeWorkflow?.();
+  let items = filtered(state.interventions, 'interventionSearch', ['numero','statut','workflow_statut','probleme_signale', i => i.clients?.entreprise_nom || i.clients?.nom || '', i => i.engins?.type_engin || '']);
+  const st = $('interventionFilter')?.value;
+  if (st) items = items.filter(i => i.statut === st);
+  const canUpdate = hasUiPermission('interventions.update') || hasUiPermission('interventions.*');
+  const canUpdateStatus = hasUiPermission('interventions.update_status') || hasUiPermission('interventions.*');
+  const canValidate = hasUiPermission('interventions.validate') || hasUiPermission('interventions.*');
+  const canInvoice = hasUiPermission('interventions.generate_invoice') || hasUiPermission('factures.create') || hasUiPermission('interventions.*');
+  const canDelete = hasUiPermission('interventions.delete') || hasUiPermission('interventions.*');
+  $('interventionsList').innerHTML = items.map(i => {
+    const intervenants = (i.intervenants || []).map(x => `${x.equipe_site?.nom_complet || 'Intervenant'} (${statusLabel(x.statut_intervention)})`).join(' • ');
+    const pieces = (i.pieces || []).map(x => `${x.produits?.nom || 'Pièce'} x${x.quantite}`).join(' • ');
+    const actions = [
+      canUpdate ? `<button class="btn small secondary" onclick="editIntervention?.('${i.id}')">Modifier</button>` : '',
+      canUpdateStatus ? `<button class="btn small primary" onclick="openInterventionWorkflow('${i.id}')">Ouvrir workflow</button>` : '',
+      canUpdateStatus ? `<button class="btn small secondary" onclick="startWorkflow('${i.id}')">Démarrer</button>` : '',
+      canUpdateStatus ? `<button class="btn small success" onclick="completeWorkflow('${i.id}')">Terminer</button>` : '',
+      canValidate ? `<button class="btn small secondary" onclick="openInterventionWorkflow('${i.id}')">Valider</button>` : '',
+      canInvoice ? `<button class="btn small success" onclick="openInterventionWorkflow('${i.id}')">Facturer</button>` : '',
+      i.facture_id ? `<button class="btn small secondary" onclick="sendFactureToClient('${i.facture_id}')">Envoyer facture</button>` : '',
+      canDelete ? `<button class="btn small danger" onclick="deleteInterventionPermanent?.('${i.id}')">Supprimer</button>` : ''
+    ].filter(Boolean).join('');
+    return `<article class="item-card workflow-intervention-card">
+      <h3>${escapeHtml(i.numero)}</h3>
+      <p><span class="status-pill">${escapeHtml(statusLabel(i.statut))}</span> ${i.workflow_statut ? `<span class="status-pill">${escapeHtml(statusLabel(i.workflow_statut))}</span>` : ''}</p>
+      <p class="meta">${escapeHtml(i.clients?.entreprise_nom || i.clients?.nom || '')} • ${escapeHtml(i.engins?.type_engin || '')}</p>
+      ${i.lieu_intervention ? `<p class="meta"><strong>Lieu :</strong> ${escapeHtml(i.lieu_intervention)}</p>` : ''}
+      <p>${escapeHtml(i.probleme_signale || '')}</p>
+      <p class="meta"><strong>Intervenants :</strong> ${escapeHtml(intervenants || 'Non renseigné')}</p>
+      <p class="meta"><strong>Pièces :</strong> ${escapeHtml(pieces || 'Aucune')}</p>
+      ${actions ? `<div class="item-actions">${actions}</div>` : ''}
+    </article>`;
+  }).join('') || '<p class="meta">Aucune intervention.</p>';
+};
+
+async function loadClientPortalSession() {
+  if (!$('clientPortalInvoices')) return;
+  try {
+    await api('/api/client/me');
+    await loadClientInvoices();
+  } catch {}
+}
+
+function setClientPortalMessage(id, text, ok = true) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = `form-message ${ok ? 'ok' : 'err'}`;
+}
+
+async function ensureClientCsrf() {
+  if (!getCookie('hydro_csrf')) {
+    try { await api('/api/config'); } catch (e) { console.warn(e); }
+  }
+}
+
+async function loadClientInvoices() {
+  const list = $('clientPortalInvoices');
+  if (!list) return;
+  const factures = await api('/api/client/factures');
+  list.classList.remove('hidden');
+  list.innerHTML = `<div class="workflow-head"><div><h3>Mes factures</h3><p class="meta">Choisis une facture pour consulter le PDF ou payer le solde.</p></div><button class="btn small secondary" onclick="clientPortalLogout()">Déconnexion</button></div>` + (factures.length ? factures.map(f => {
+    const paid = Number(f.solde || 0) <= 0;
+    const receipts = (f.paiements || []).map(p => `<a class="btn small secondary" href="${escapeHtml(p.pdf_url)}" target="_blank" rel="noreferrer">Reçu ${escapeHtml(p.numero_recu)}</a>`).join('');
+    return `<article class="item-card">
+      <h3>${escapeHtml(f.numero)}</h3>
+      <p><span class="status-pill ${paid ? 'ok' : 'warn'}">${paid ? 'Payée' : 'Solde à payer'}</span></p>
+      <p>Total : <strong>${money(f.total)}</strong> • Payé : <strong>${money(f.montant_paye)}</strong> • Solde : <strong>${money(f.solde)}</strong></p>
+      ${f.date_limite_paiement ? `<p class="meta">Date limite : ${escapeHtml(f.date_limite_paiement)}</p>` : ''}
+      <div class="item-actions">
+        <a class="btn small secondary" href="${escapeHtml(f.pdf_url)}" target="_blank" rel="noreferrer">Voir facture PDF</a>
+        ${receipts}
+        ${paid ? '' : `<button class="btn small primary" onclick="clientPortalPay('${f.id}', ${Number(f.solde || 0)})">Payer en ligne</button>`}
+      </div>
+    </article>`;
+  }).join('') : '<p class="meta">Aucune facture trouvée pour ce compte client.</p>');
+}
+
+window.clientPortalPay = async function(factureId, solde) {
+  const montantRaw = prompt('Montant à payer', String(Math.round(solde || 0)));
+  if (montantRaw === null) return;
+  try {
+    await ensureClientCsrf();
+    const result = await jsonApi('/api/client/payments/initiate', 'POST', { facture_id: factureId, montant: montantRaw });
+    if (result.checkout_url) location.href = result.checkout_url;
+    else toast('Paiement initié. La passerelle n’a pas retourné de lien de paiement.');
+  } catch (err) { toast(err.message); }
+};
+
+window.clientPortalLogout = async function() {
+  try { await ensureClientCsrf(); await api('/api/client/auth/logout', { method: 'POST' }); } catch {}
+  $('clientPortalInvoices')?.classList.add('hidden');
+};
+
+setTimeout(() => {
+  ensureClientCsrf().then(loadClientPortalSession).catch(() => {});
+  $('clientPortalRequestForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await ensureClientCsrf();
+      const result = await jsonApi('/api/client/auth/request', 'POST', formToObject(e.target));
+      setClientPortalMessage('clientPortalRequestMsg', result.debug_code ? `Code envoyé. Code local: ${result.debug_code}` : 'Code envoyé au téléphone/WhatsApp.');
+      const verifyPhone = qs('[name="telephone"]', $('clientPortalVerifyForm'));
+      if (verifyPhone) verifyPhone.value = qs('[name="telephone"]', e.target)?.value || '';
+    } catch (err) { setClientPortalMessage('clientPortalRequestMsg', err.message, false); }
+  });
+
+  $('clientPortalVerifyForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await ensureClientCsrf();
+      await jsonApi('/api/client/auth/verify', 'POST', formToObject(e.target));
+      setClientPortalMessage('clientPortalVerifyMsg', 'Connexion client confirmée.');
+      await loadClientInvoices();
+    } catch (err) { setClientPortalMessage('clientPortalVerifyMsg', err.message, false); }
+  });
+
+  $('entrepriseAssetsForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await api('/api/entreprise/assets', { method: 'POST', body: new FormData(e.target) });
+      e.target.reset();
+      toast('Cachet / signature enregistrés.');
+    } catch (err) { toast(err.message); }
+  });
 }, 0);

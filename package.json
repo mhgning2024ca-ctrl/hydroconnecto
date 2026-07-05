@@ -1,6 +1,6 @@
 {
   "name": "hydroconnecto-erp-pro",
-  "version": "2.2.2.6",
+  "version": "2.2.2.8",
   "description": "HydroConnecto ERP Pro - correction Vercel fichiers publics et runtime uploads",
   "main": "server.js",
   "scripts": {

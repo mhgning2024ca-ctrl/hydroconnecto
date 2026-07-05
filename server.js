@@ -350,13 +350,13 @@ function requireAdmin(req, res, next) {
 
 const DEFAULT_ROLE_PERMISSIONS = {
   super_administrateur: ['*'],
-  administrateur: ['dashboard.view','dashboard.finance','dashboard.stock','dashboard.demandes','dashboard.interventions','demandes_devis.*','clients.*','engins.*','produits.*','services.*','interventions.*','documents.*','devis.*','factures.*','paiements.*','galerie.*','equipe.*','journal.view','users.*','exports.*','entreprise.view','profile.*','fournisseurs.*','commandes_fournisseurs.*'],
-  directeur: ['dashboard.view','dashboard.finance','dashboard.stock','dashboard.demandes','dashboard.interventions','demandes_devis.*','clients.*','engins.*','produits.*','services.*','interventions.*','documents.*','devis.*','factures.*','paiements.*','galerie.*','equipe.*','journal.view','users.view','users.create','users.update','users.approve','exports.*','entreprise.view','profile.*','fournisseurs.*','commandes_fournisseurs.*'],
-  responsable: ['dashboard.view','dashboard.demandes','dashboard.interventions','dashboard.stock','demandes_devis.view','demandes_devis.update','clients.*','engins.*','interventions.*','devis.view','devis.create','devis.update','galerie.view','entreprise.view','profile.*','produits.view'],
-  comptable: ['dashboard.view','dashboard.finance','clients.view','documents.*','devis.view','factures.*','paiements.*','exports.*','entreprise.view','profile.*','fournisseurs.view','commandes_fournisseurs.view'],
-  chef_atelier: ['dashboard.view','dashboard.interventions','dashboard.stock','interventions.*','engins.view','produits.view','services.view','equipe.view','entreprise.view','profile.*'],
-  technicien: ['dashboard.view','dashboard.interventions','interventions.view','interventions.view_assigned','interventions.update_status','interventions.add_report','engins.view','services.view','entreprise.view','profile.*'],
-  magasinier_stock: ['dashboard.view','dashboard.stock','produits.*','services.view','interventions.view','entreprise.view','profile.*','fournisseurs.view','commandes_fournisseurs.view','commandes_fournisseurs.receive'],
+  administrateur: ['dashboard.view','dashboard.finance','dashboard.stock','dashboard.demandes','dashboard.interventions','demandes_devis.*','clients.*','engins.*','produits.*','services.*','interventions.*','interventions.validate','interventions.generate_invoice','documents.*','devis.*','factures.*','paiements.*','galerie.*','equipe.*','journal.view','users.*','exports.*','entreprise.view','entreprise.update','notifications.view','profile.*','fournisseurs.*','commandes_fournisseurs.*'],
+  directeur: ['dashboard.view','dashboard.finance','dashboard.stock','dashboard.demandes','dashboard.interventions','demandes_devis.*','clients.*','engins.*','produits.*','services.*','interventions.*','interventions.validate','interventions.generate_invoice','documents.*','devis.*','factures.*','paiements.*','galerie.*','equipe.*','journal.view','users.view','users.create','users.update','users.approve','exports.*','entreprise.view','entreprise.update','notifications.view','profile.*','fournisseurs.*','commandes_fournisseurs.*'],
+  responsable: ['dashboard.view','dashboard.demandes','dashboard.interventions','dashboard.stock','demandes_devis.view','demandes_devis.update','clients.*','engins.*','interventions.*','interventions.validate','notifications.view','devis.view','devis.create','devis.update','galerie.view','entreprise.view','profile.*','produits.view'],
+  comptable: ['dashboard.view','dashboard.finance','clients.view','documents.*','devis.view','factures.*','paiements.*','interventions.view','interventions.generate_invoice','exports.*','entreprise.view','notifications.view','profile.*','fournisseurs.view','commandes_fournisseurs.view'],
+  chef_atelier: ['dashboard.view','dashboard.interventions','dashboard.stock','interventions.*','notifications.view','engins.view','produits.view','services.view','equipe.view','entreprise.view','profile.*'],
+  technicien: ['dashboard.view','dashboard.interventions','interventions.view','interventions.view_assigned','interventions.update_status','interventions.add_report','notifications.view','engins.view','services.view','entreprise.view','profile.*'],
+  magasinier_stock: ['dashboard.view','dashboard.stock','produits.*','services.view','interventions.view','notifications.view','entreprise.view','profile.*','fournisseurs.view','commandes_fournisseurs.view','commandes_fournisseurs.receive'],
   commercial: ['dashboard.view','dashboard.demandes','demandes_devis.*','clients.view','clients.create','devis.view','devis.create','galerie.view','entreprise.view','profile.*'],
   assistant_administratif: ['dashboard.view','dashboard.demandes','demandes_devis.view','demandes_devis.update','clients.view','galerie.view','equipe.view','entreprise.view','profile.*'],
   lecture_seule: ['dashboard.view','demandes_devis.view','clients.view','engins.view','produits.view','services.view','interventions.view','documents.view','devis.view','factures.view','paiements.view','galerie.view','equipe.view','entreprise.view','profile.view']
@@ -489,9 +489,14 @@ function inferPermission(req) {
   if (path.startsWith('/api/equipe')) return `equipe.${action}`;
   if (path.startsWith('/api/interventions')) {
     if (path.includes('/status')) return 'interventions.update_status';
+    if (path.includes('/start') || path.includes('/steps') || path.includes('/complete') || path.includes('/reopen')) return method === 'GET' ? 'interventions.view' : 'interventions.update_status';
+    if (path.includes('/validate')) return 'interventions.validate';
+    if (path.includes('/generate-invoice')) return 'interventions.generate_invoice';
     return `interventions.${action}`;
   }
 
+  if (path.startsWith('/api/notifications')) return 'notifications.view';
+  if (path.startsWith('/api/client/')) return null;
   if (path.startsWith('/api/devis')) return `devis.${action}`;
   if (path.startsWith('/api/factures')) return `factures.${action}`;
   if (path.startsWith('/api/paiements')) return `paiements.${action}`;
@@ -808,6 +813,179 @@ async function sendWhatsAppText(to, message, meta = {}) {
   }
 }
 
+async function createAppNotification({ type = 'info', role = null, userId = null, email = '', phone = '', title, message, data = {}, whatsapp = false }) {
+  const row = await insertBestEffort('erp_notifications', {
+    type,
+    cible_role: role,
+    cible_user_id: userId,
+    cible_email: email || null,
+    cible_phone: phone || null,
+    titre: title,
+    message,
+    data
+  });
+  if (whatsapp || phone) {
+    await sendWhatsAppText(phone, `HydroConnecto: ${title}\n${message}`, { type: 'erp_notification', notification_id: row?.id, ...data });
+  }
+  return row;
+}
+
+async function notifyRoles(roles = [], notification = {}) {
+  for (const role of roles) {
+    await createAppNotification({ ...notification, role });
+  }
+}
+
+async function getInterventionFull(id) {
+  const { data: intervention, error } = await supabase
+    .from('interventions')
+    .select('*, clients(*), engins(*)')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+
+  const [intervenantsResult, piecesResult, stepsResult] = await Promise.all([
+    supabase.from('intervention_intervenants').select('*, equipe_site(*)').eq('intervention_id', id),
+    supabase.from('intervention_pieces').select('*, produits(*)').eq('intervention_id', id),
+    supabase.from('intervention_work_steps').select('*, services(nom, prix_unitaire)').eq('intervention_id', id).order('ordre', { ascending: true })
+  ]);
+
+  let facture = null;
+  if (intervention.facture_id) {
+    const factureResult = await supabase.from('factures').select('id, numero, total, montant_paye, solde').eq('id', intervention.facture_id).maybeSingle();
+    if (!factureResult.error) facture = factureResult.data || null;
+  }
+
+  return {
+    ...intervention,
+    factures: facture,
+    intervenants: intervenantsResult.error ? [] : (intervenantsResult.data || []),
+    pieces: piecesResult.error ? [] : (piecesResult.data || []),
+    steps: stepsResult.error ? [] : (stepsResult.data || [])
+  };
+}
+
+async function notifyAssignedIntervention(interventionId) {
+  try {
+    const intervention = await getInterventionFull(interventionId);
+    const client = intervention.clients?.entreprise_nom || intervention.clients?.nom || 'Client';
+    const engin = [intervention.engins?.type_engin, intervention.engins?.marque, intervention.engins?.modele].filter(Boolean).join(' ') || 'Engin non renseigné';
+    const date = intervention.date_intervention || 'Date à confirmer';
+    const place = intervention.lieu_intervention || intervention.clients?.adresse || 'Lieu à confirmer';
+    const message = `Intervention ${intervention.numero} programmée le ${date}. Client: ${client}. Engin: ${engin}. Lieu: ${place}.`;
+
+    for (const row of intervention.intervenants || []) {
+      const member = row.equipe_site || {};
+      await createAppNotification({
+        type: 'intervention_assignee',
+        userId: row.employe_id || row.equipe_id || null,
+        email: member.email || '',
+        phone: member.telephone || '',
+        title: 'Intervention assignée',
+        message,
+        data: { intervention_id: intervention.id, numero: intervention.numero, role_intervention: row.role_intervention || '' },
+        whatsapp: true
+      });
+    }
+    await notifyRoles(['responsable', 'chef_atelier'], {
+      type: 'intervention_planifiee',
+      title: 'Intervention programmée',
+      message,
+      data: { intervention_id: intervention.id, numero: intervention.numero }
+    });
+  } catch (e) {
+    console.warn('Notifications intervention non envoyées:', e.message);
+  }
+}
+
+function computeDiscountAmount(base, type, value) {
+  const amount = toNumber(base);
+  const discount = toNumber(value);
+  if (String(type || '').toLowerCase() === 'pourcentage') return Math.round(amount * Math.min(Math.max(discount, 0), 100) / 100);
+  return Math.min(amount, Math.max(0, discount));
+}
+
+function normalizeStepProducts(raw) {
+  let items = raw;
+  if (typeof raw === 'string') {
+    try { items = JSON.parse(raw || '[]'); } catch { items = []; }
+  }
+  if (!Array.isArray(items)) items = [];
+  return items.map(p => ({
+    produit_id: p.produit_id || null,
+    nom: p.nom || p.designation || 'Produit',
+    quantite: toNumber(p.quantite) || 1,
+    prix_unitaire: toNumber(p.prix_unitaire) || 15000,
+    remise: toNumber(p.remise)
+  })).filter(p => p.produit_id || p.nom);
+}
+
+function buildInvoiceLinesFromSteps(steps = [], promotionPourcentage = 0) {
+  const promo = Math.min(Math.max(toNumber(promotionPourcentage), 0), 100);
+  const lines = [];
+  for (const step of steps) {
+    const servicePrice = toNumber(step.prix_service) || toNumber(step.services?.prix_unitaire) || 10000;
+    const serviceDiscount = computeDiscountAmount(servicePrice, step.remise_type, step.remise_valeur);
+    const promotion = Math.round(Math.max(0, servicePrice - serviceDiscount) * promo / 100);
+    lines.push({
+      type_ligne: 'service',
+      service_id: step.service_id || null,
+      designation: step.service_nom || step.service_autre || 'Service intervention',
+      quantite: 1,
+      prix_unitaire: servicePrice,
+      remise: serviceDiscount + promotion
+    });
+
+    for (const product of normalizeStepProducts(step.produit_lignes)) {
+      const lineBase = toNumber(product.quantite) * toNumber(product.prix_unitaire);
+      const productPromo = Math.round(Math.max(0, lineBase - toNumber(product.remise)) * promo / 100);
+      lines.push({
+        type_ligne: 'produit',
+        produit_id: product.produit_id || null,
+        designation: product.nom || 'Produit utilisé',
+        quantite: product.quantite,
+        prix_unitaire: product.prix_unitaire,
+        remise: toNumber(product.remise) + productPromo
+      });
+    }
+  }
+  return lines;
+}
+
+function getClientSession(req) {
+  const raw = req.signedCookies?.hydro_client;
+  if (!raw) return null;
+  try { return JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')); }
+  catch { return null; }
+}
+
+function requireClientSession(req, res) {
+  const session = getClientSession(req);
+  if (!session?.client_id) {
+    res.status(401).json({ error: 'Connexion client requise' });
+    return null;
+  }
+  return session;
+}
+
+function signPublicDocument(type, id, expires) {
+  const secret = process.env.COOKIE_SECRET || 'hydroconnecto-dev-secret';
+  return crypto.createHmac('sha256', secret).update(`${type}:${id}:${expires}`).digest('hex');
+}
+
+function buildSignedDocumentUrl(type, id, days = 14) {
+  const expires = Date.now() + days * 24 * 60 * 60 * 1000;
+  const signature = signPublicDocument(type, id, expires);
+  return buildAppUrl(`/api/public-documents/${type}/${id}.pdf?expires=${expires}&sig=${signature}`);
+}
+
+function verifyPublicDocumentSignature(type, id, expires, signature) {
+  const exp = Number(expires);
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  const expected = signPublicDocument(type, id, exp);
+  return safeCompare(signature, expected);
+}
+
 function buildAppUrl(pathname = '/') {
   const base = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${PORT}`);
   return `${String(base).replace(/\/+$/, '')}${pathname.startsWith('/') ? pathname : '/' + pathname}`;
@@ -865,9 +1043,12 @@ function verifyWebhookSignature(req) {
 app.get(['/admin', '/admin/login'], sendIndexFile);
 
 app.get('/api/health', (req, res) => {
-  res.json({ app: 'HydroConnecto ERP Pro v2.2.2.6 PRO', status: 'ok', supabase: Boolean(supabase), admin: isAdmin(req), time: new Date().toISOString() });
+  res.json({ app: 'HydroConnecto ERP Pro v2.2.2.8 PRO', status: 'ok', supabase: Boolean(supabase), admin: isAdmin(req), time: new Date().toISOString() });
 });
-app.get('/api/config', (req, res) => res.json({ company: COMPANY, designer: DESIGNER, admin: isAdmin(req) }));
+app.get('/api/config', (req, res) => {
+  createCsrfToken(res);
+  res.json({ company: COMPANY, designer: DESIGNER, admin: isAdmin(req) });
+});
 
 async function sendLoginSuccess(req, res, user, source = 'env') {
   const permissions = await getEffectivePermissions(user);
@@ -1134,6 +1315,136 @@ app.post('/api/public/demandes-devis', upload.single('audio'), asyncRoute(async 
   res.status(201).json({ success: true, message: 'Votre demande a été envoyée avec succès.', demande: data });
 }, { admin: false }));
 
+app.post('/api/client/auth/request', asyncRoute(async (req, res) => {
+  const phone = normalizePhone(req.body.telephone);
+  if (!phone) return res.status(400).json({ error: 'Téléphone requis.' });
+
+  const { data: clients, error } = await supabase.from('clients').select('id, nom, entreprise_nom, telephone, whatsapp, email').limit(1000);
+  if (error) throw error;
+  const client = (clients || []).find(c => normalizePhone(c.telephone) === phone || normalizePhone(c.whatsapp) === phone);
+  if (!client) return res.status(404).json({ error: 'Aucun client trouvé avec ce téléphone.' });
+
+  const code = String(crypto.randomInt(100000, 999999));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const { error: insertError } = await supabase.from('client_portal_otps').insert({
+    client_id: client.id,
+    telephone: phone,
+    code_hash: hashPassword(code),
+    expires_at: expiresAt
+  });
+  if (insertError) throw insertError;
+
+  await sendWhatsAppText(client.whatsapp || client.telephone, `HydroConnecto: votre code espace client est ${code}. Il expire dans 10 minutes.`, { type: 'client_login_code', client_id: client.id });
+  res.json({ success: true, message: 'Code envoyé au téléphone/WhatsApp du client.', debug_code: IS_PRODUCTION ? undefined : code });
+}, { admin: false }));
+
+app.post('/api/client/auth/verify', asyncRoute(async (req, res) => {
+  const phone = normalizePhone(req.body.telephone);
+  const code = String(req.body.code || '').trim();
+  if (!phone || !code) return res.status(400).json({ error: 'Téléphone et code requis.' });
+
+  const { data, error } = await supabase
+    .from('client_portal_otps')
+    .select('*, clients(id, nom, entreprise_nom, telephone, whatsapp, email)')
+    .eq('telephone', phone)
+    .is('used_at', null)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  if (error) throw error;
+
+  const row = (data || []).find(x => new Date(x.expires_at).getTime() > Date.now() && verifyPassword(code, x.code_hash));
+  if (!row) return res.status(401).json({ error: 'Code invalide ou expiré.' });
+
+  await supabase.from('client_portal_otps').update({ used_at: new Date().toISOString() }).eq('id', row.id);
+  const client = row.clients || {};
+  const session = { client_id: client.id, name: client.entreprise_nom || client.nom || 'Client', phone };
+  res.cookie('hydro_client', Buffer.from(JSON.stringify(session)).toString('base64url'), {
+    ...secureCookieOptions(),
+    signed: true,
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 8
+  });
+  createCsrfToken(res);
+  res.json({ success: true, client: session });
+}, { admin: false }));
+
+app.post('/api/client/auth/logout', asyncRoute(async (req, res) => {
+  res.clearCookie('hydro_client');
+  res.json({ success: true });
+}, { admin: false }));
+
+app.get('/api/client/me', asyncRoute(async (req, res) => {
+  const session = requireClientSession(req, res);
+  if (!session) return;
+  createCsrfToken(res);
+  res.json(session);
+}, { admin: false }));
+
+app.get('/api/client/factures', asyncRoute(async (req, res) => {
+  const session = requireClientSession(req, res);
+  if (!session) return;
+  const { data: factures, error } = await supabase
+    .from('factures')
+    .select('*, clients(nom, entreprise_nom, telephone, whatsapp, email)')
+    .eq('client_id', session.client_id)
+    .order('date_facture', { ascending: false });
+  if (error) throw error;
+  const ids = (factures || []).map(f => f.id);
+  let lignes = [], paiements = [];
+  if (ids.length) {
+    const [linesResult, paymentsResult] = await Promise.all([
+      supabase.from('lignes_facture').select('*').in('facture_id', ids),
+      supabase.from('paiements').select('*').in('facture_id', ids).order('date_paiement', { ascending: false })
+    ]);
+    lignes = linesResult.error ? [] : (linesResult.data || []);
+    paiements = paymentsResult.error ? [] : (paymentsResult.data || []);
+  }
+  res.json((factures || []).map(f => ({
+    ...f,
+    pdf_url: buildSignedDocumentUrl('factures', f.id),
+    lignes: lignes.filter(l => l.facture_id === f.id),
+    paiements: paiements.filter(p => p.facture_id === f.id).map(p => ({ ...p, pdf_url: buildSignedDocumentUrl('paiements', p.id) }))
+  })));
+}, { admin: false }));
+
+app.post('/api/client/payments/initiate', asyncRoute(async (req, res) => {
+  const session = requireClientSession(req, res);
+  if (!session) return;
+  const factureId = req.body.facture_id;
+  const { data: facture, error } = await supabase
+    .from('factures')
+    .select('*, clients(nom, entreprise_nom, telephone, whatsapp, email)')
+    .eq('id', factureId)
+    .eq('client_id', session.client_id)
+    .single();
+  if (error) throw error;
+  const montant = toNumber(req.body.montant || facture.solde || facture.total);
+  if (montant <= 0) return res.status(400).json({ error: 'Montant de paiement invalide.' });
+
+  const payment = await createPaymentRequest({ facture, montant, telephone: req.body.telephone || session.phone });
+  await insertBestEffort('payment_transactions', {
+    facture_id: facture.id,
+    provider: process.env.PAYMENT_PROVIDER || 'generic',
+    external_reference: payment.externalRef,
+    montant,
+    devise: COMPANY.devise,
+    statut: 'initie',
+    request_payload: payment.request,
+    response_payload: payment.response
+  });
+  const checkoutUrl = payment.response.checkout_url || payment.response.payment_url || payment.response.url || '';
+  if (checkoutUrl) {
+    await supabase.from('factures').update({ lien_paiement: checkoutUrl }).eq('id', facture.id);
+  }
+  await notifyRoles(['comptable', 'administrateur', 'directeur'], {
+    type: 'paiement_client_initie',
+    title: 'Paiement client initié',
+    message: `${session.name} a lancé un paiement de ${money(montant)} pour la facture ${facture.numero}.`,
+    data: { facture_id: facture.id, reference: payment.externalRef }
+  });
+  res.status(201).json({ success: true, reference: payment.externalRef, checkout_url: checkoutUrl, provider_response: payment.response });
+}, { admin: false }));
+
 // Dashboard
 app.get('/api/dashboard', asyncRoute(async (req, res) => {
   const user = getAdminUser(req);
@@ -1233,6 +1544,27 @@ app.get('/api/dashboard', asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/entreprise', asyncRoute(async (req, res) => res.json(await getEntreprise())));
+app.post('/api/entreprise/assets', upload.fields([{ name: 'cachet', maxCount: 1 }, { name: 'signature', maxCount: 1 }]), asyncRoute(async (req, res) => {
+  const entreprise = await getEntreprise();
+  const payload = {};
+  if (req.files?.cachet?.[0]) {
+    const cachet = await storeUploadedFile(req.files.cachet[0], 'documents', 'entreprise');
+    payload.cachet_url = cachet?.url || null;
+    payload.cachet_bucket = cachet?.bucket || null;
+    payload.cachet_path = cachet?.path || null;
+  }
+  if (req.files?.signature?.[0]) {
+    const signature = await storeUploadedFile(req.files.signature[0], 'documents', 'entreprise');
+    payload.signature_url = signature?.url || null;
+    payload.signature_bucket = signature?.bucket || null;
+    payload.signature_path = signature?.path || null;
+  }
+  if (!Object.keys(payload).length) return res.status(400).json({ error: 'Ajoute un cachet ou une signature.' });
+  const { data, error } = await supabase.from('entreprises').update(payload).eq('id', entreprise.id).select('*').single();
+  if (error) throw error;
+  await logAction(req, 'Mise à jour cachet/signature entreprise', 'entreprises', data.id, { fichiers: Object.keys(payload) });
+  res.json({ success: true, entreprise: { ...COMPANY, ...data } });
+}, { admin: true, permission: 'entreprise.update' }));
 app.get('/api/categories', asyncRoute(async (req, res) => res.json(await listActive('categories_produits', 'nom', true))));
 
 // Demandes de devis admin
@@ -1451,9 +1783,16 @@ app.post('/api/interventions', asyncRoute(async (req, res) => {
     entreprise_id: entreprise.id, numero: req.body.numero || await nextNumero('INT', 'interventions'), client_id: req.body.client_id || null, engin_id: req.body.engin_id || null,
     statut: req.body.statut || 'planifiee', date_intervention: req.body.date_intervention || new Date().toISOString().slice(0, 10),
     probleme_signale: req.body.probleme_signale || '', diagnostic: req.body.diagnostic || '', travaux_realises: req.body.travaux_realises || '',
-    pieces_utilisees: req.body.pieces_utilisees || ''
+    pieces_utilisees: req.body.pieces_utilisees || '',
+    lieu_intervention: req.body.lieu_intervention || '',
+    workflow_statut: 'planifiee'
   };
   let { data, error } = await supabase.from('interventions').insert(payload).select('*').single();
+  if (error && /(lieu_intervention|workflow_statut)/i.test(error.message || '')) {
+    delete payload.lieu_intervention;
+    delete payload.workflow_statut;
+    const retry = await supabase.from('interventions').insert(payload).select('*').single(); data = retry.data; error = retry.error;
+  }
   if (error && /invalid input value for enum/i.test(error.message || '')) {
     payload.statut = payload.statut === 'terminee' || payload.statut === 'fin_intervention' ? 'terminee' : payload.statut === 'annulee' ? 'annulee' : 'en_cours';
     const retry = await supabase.from('interventions').insert(payload).select('*').single(); data = retry.data; error = retry.error;
@@ -1479,6 +1818,7 @@ app.post('/api/interventions', asyncRoute(async (req, res) => {
     }
   }
   await logAction(req, 'Création intervention', 'interventions', data.id, { numero: data.numero, intervenants: intervenants.length, pieces: pieces.length });
+  await notifyAssignedIntervention(data.id);
   res.status(201).json(data);
 }));
 app.put('/api/interventions/:id', asyncRoute(async (req, res) => {
@@ -1487,11 +1827,17 @@ app.put('/api/interventions/:id', asyncRoute(async (req, res) => {
     engin_id: req.body.engin_id || null,
     statut: req.body.statut || 'planifiee',
     date_intervention: req.body.date_intervention || null,
+    lieu_intervention: req.body.lieu_intervention || '',
     probleme_signale: req.body.probleme_signale || '',
     diagnostic: req.body.diagnostic || '',
     travaux_realises: req.body.travaux_realises || ''
   };
-  const { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  let { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  if (error && /lieu_intervention/i.test(error.message || '')) {
+    delete payload.lieu_intervention;
+    const retry = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+    data = retry.data; error = retry.error;
+  }
   if (error) throw error;
   if (Array.isArray(req.body.intervenants)) {
     await supabase.from('intervention_intervenants').delete().eq('intervention_id', req.params.id);
@@ -1520,6 +1866,264 @@ app.put('/api/interventions/:id/status', asyncRoute(async (req, res) => {
   if (error) throw error; await logAction(req, `Changement statut intervention: ${statut}`, 'interventions', data.id, { numero: data.numero }); res.json(data);
 }));
 
+app.get('/api/notifications', asyncRoute(async (req, res) => {
+  const user = getAdminUser(req);
+  const canSeeAll = await hasPermission(req, 'users.view');
+  const { data, error } = await supabase.from('erp_notifications').select('*').order('created_at', { ascending: false }).limit(120);
+  if (error) throw error;
+  const items = (data || []).filter(n => {
+    if (canSeeAll) return true;
+    if (!n.cible_role && !n.cible_user_id && !n.cible_email) return true;
+    if (n.cible_role && n.cible_role === user.role) return true;
+    if (n.cible_user_id && user.id && n.cible_user_id === user.id) return true;
+    if (n.cible_email && user.email && String(n.cible_email).toLowerCase() === String(user.email).toLowerCase()) return true;
+    return false;
+  });
+  res.json({ items, unread: items.filter(x => !x.lu).length });
+}, { admin: true, permission: 'notifications.view' }));
+
+app.put('/api/notifications/:id/read', asyncRoute(async (req, res) => {
+  const { data, error } = await supabase.from('erp_notifications').update({ lu: true }).eq('id', req.params.id).select('*').single();
+  if (error) throw error;
+  res.json(data);
+}, { admin: true, permission: 'notifications.view' }));
+
+app.get('/api/interventions/:id/workflow', asyncRoute(async (req, res) => {
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.view' }));
+
+app.post('/api/interventions/:id/start', asyncRoute(async (req, res) => {
+  const payload = { statut: 'en_cours', workflow_statut: 'en_cours', date_debut_reelle: new Date().toISOString() };
+  let { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  if (error && /(workflow_statut|date_debut_reelle)/i.test(error.message || '')) {
+    const retry = await supabase.from('interventions').update({ statut: 'en_cours' }).eq('id', req.params.id).select('*').single();
+    data = retry.data; error = retry.error;
+  }
+  if (error) throw error;
+  await logAction(req, 'Démarrage intervention', 'interventions', data.id, { numero: data.numero });
+  await notifyRoles(['responsable', 'chef_atelier'], {
+    type: 'intervention_demarrage',
+    title: 'Intervention démarrée',
+    message: `L’intervention ${data.numero} est maintenant en cours.`,
+    data: { intervention_id: data.id, numero: data.numero }
+  });
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.update_status' }));
+
+app.post('/api/interventions/:id/steps', upload.fields([{ name: 'photo_avant', maxCount: 1 }, { name: 'photo_apres', maxCount: 1 }]), asyncRoute(async (req, res) => {
+  const interventionId = req.params.id;
+  const serviceId = req.body.service_id && req.body.service_id !== 'autre' ? req.body.service_id : null;
+  let service = null;
+  if (serviceId) {
+    const { data } = await supabase.from('services').select('id, nom, prix_unitaire').eq('id', serviceId).maybeSingle();
+    service = data || null;
+  }
+  const avant = req.files?.photo_avant?.[0] ? await storeUploadedFile(req.files.photo_avant[0], 'documents', 'interventions') : null;
+  const apres = req.files?.photo_apres?.[0] ? await storeUploadedFile(req.files.photo_apres[0], 'documents', 'interventions') : null;
+  const { count } = await supabase.from('intervention_work_steps').select('id', { count: 'exact', head: true }).eq('intervention_id', interventionId);
+  const productLines = normalizeStepProducts(req.body.produit_lignes);
+  const payload = {
+    intervention_id: interventionId,
+    ordre: toNumber(req.body.ordre) || (count || 0) + 1,
+    service_id: serviceId,
+    service_nom: req.body.service_autre || service?.nom || req.body.service_nom || 'Autre service',
+    service_autre: req.body.service_autre || null,
+    statut: req.body.statut || 'terminee',
+    produit_lignes: productLines,
+    prix_service: toNumber(req.body.prix_service) || toNumber(service?.prix_unitaire) || 10000,
+    remise_type: req.body.remise_type || 'montant',
+    remise_valeur: toNumber(req.body.remise_valeur),
+    notes: req.body.notes || '',
+    rapport: req.body.rapport || '',
+    photo_avant_url: avant?.url || null,
+    photo_avant_bucket: avant?.bucket || null,
+    photo_avant_path: avant?.path || null,
+    photo_apres_url: apres?.url || null,
+    photo_apres_bucket: apres?.bucket || null,
+    photo_apres_path: apres?.path || null
+  };
+  const { data, error } = await supabase.from('intervention_work_steps').insert(payload).select('*').single();
+  if (error) throw error;
+  await logAction(req, 'Ajout étape intervention', 'intervention_work_steps', data.id, { intervention_id: interventionId, service: data.service_nom });
+  res.status(201).json(await getInterventionFull(interventionId));
+}, { admin: true, permission: 'interventions.update_status' }));
+
+app.put('/api/interventions/:id/steps/:stepId', upload.fields([{ name: 'photo_avant', maxCount: 1 }, { name: 'photo_apres', maxCount: 1 }]), asyncRoute(async (req, res) => {
+  const payload = {
+    updated_at: new Date().toISOString()
+  };
+  if (req.body.service_id !== undefined) payload.service_id = req.body.service_id && req.body.service_id !== 'autre' ? req.body.service_id : null;
+  if (req.body.service_nom !== undefined || req.body.service_autre !== undefined) {
+    payload.service_nom = req.body.service_autre || req.body.service_nom || 'Autre service';
+    payload.service_autre = req.body.service_autre || null;
+  }
+  if (req.body.statut !== undefined) payload.statut = req.body.statut || 'terminee';
+  if (req.body.produit_lignes !== undefined) payload.produit_lignes = normalizeStepProducts(req.body.produit_lignes);
+  if (req.body.prix_service !== undefined) payload.prix_service = toNumber(req.body.prix_service) || 10000;
+  if (req.body.remise_type !== undefined) payload.remise_type = req.body.remise_type || 'montant';
+  if (req.body.remise_valeur !== undefined) payload.remise_valeur = toNumber(req.body.remise_valeur);
+  if (req.body.notes !== undefined) payload.notes = req.body.notes || '';
+  if (req.body.rapport !== undefined) payload.rapport = req.body.rapport || '';
+  if (req.files?.photo_avant?.[0]) {
+    const avant = await storeUploadedFile(req.files.photo_avant[0], 'documents', 'interventions');
+    payload.photo_avant_url = avant?.url || null;
+    payload.photo_avant_bucket = avant?.bucket || null;
+    payload.photo_avant_path = avant?.path || null;
+  }
+  if (req.files?.photo_apres?.[0]) {
+    const apres = await storeUploadedFile(req.files.photo_apres[0], 'documents', 'interventions');
+    payload.photo_apres_url = apres?.url || null;
+    payload.photo_apres_bucket = apres?.bucket || null;
+    payload.photo_apres_path = apres?.path || null;
+  }
+  const { data, error } = await supabase.from('intervention_work_steps').update(payload).eq('id', req.params.stepId).eq('intervention_id', req.params.id).select('*').single();
+  if (error) throw error;
+  await logAction(req, 'Modification étape intervention', 'intervention_work_steps', data.id, { intervention_id: req.params.id });
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.update_status' }));
+
+app.post('/api/interventions/:id/complete', asyncRoute(async (req, res) => {
+  const payload = {
+    statut: 'terminee',
+    workflow_statut: 'terminee_attente_validation',
+    rapport_responsable: req.body.rapport_responsable || req.body.rapport || '',
+    date_fin_reelle: new Date().toISOString()
+  };
+  const { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  if (error) throw error;
+  await notifyRoles(['administrateur', 'directeur', 'responsable'], {
+    type: 'intervention_validation',
+    title: 'Intervention à valider',
+    message: `L’intervention ${data.numero} est terminée et attend validation avant facturation.`,
+    data: { intervention_id: data.id, numero: data.numero }
+  });
+  await logAction(req, 'Intervention terminée pour validation', 'interventions', data.id, { numero: data.numero });
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.update_status' }));
+
+app.post('/api/interventions/:id/reopen', asyncRoute(async (req, res) => {
+  const payload = { statut: 'en_cours', workflow_statut: 'en_cours' };
+  const { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  if (error) throw error;
+  await logAction(req, 'Relance intervention en cours', 'interventions', data.id, { numero: data.numero });
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.update_status' }));
+
+app.post('/api/interventions/:id/validate', asyncRoute(async (req, res) => {
+  const steps = Array.isArray(req.body.steps) ? req.body.steps : [];
+  for (const step of steps) {
+    if (!step.id) continue;
+    const patch = {};
+    if (step.prix_service !== undefined) patch.prix_service = toNumber(step.prix_service);
+    if (step.remise_type !== undefined) patch.remise_type = step.remise_type || 'montant';
+    if (step.remise_valeur !== undefined) patch.remise_valeur = toNumber(step.remise_valeur);
+    if (step.produit_lignes !== undefined) patch.produit_lignes = normalizeStepProducts(step.produit_lignes);
+    if (Object.keys(patch).length) {
+      patch.updated_at = new Date().toISOString();
+      await supabase.from('intervention_work_steps').update(patch).eq('id', step.id).eq('intervention_id', req.params.id);
+    }
+  }
+  const user = getAdminUser(req);
+  const payload = {
+    workflow_statut: 'validee_a_facturer',
+    promotion_pourcentage: toNumber(req.body.promotion_pourcentage),
+    validation_admin_notes: req.body.validation_admin_notes || '',
+    valide_par: user.email || user.name || 'admin',
+    valide_at: new Date().toISOString()
+  };
+  const { data, error } = await supabase.from('interventions').update(payload).eq('id', req.params.id).select('*').single();
+  if (error) throw error;
+  await notifyRoles(['comptable', 'administrateur', 'directeur'], {
+    type: 'intervention_a_facturer',
+    title: 'Intervention validée à facturer',
+    message: `L’intervention ${data.numero} est validée. La facture peut être générée.`,
+    data: { intervention_id: data.id, numero: data.numero }
+  });
+  await logAction(req, 'Validation admin intervention', 'interventions', data.id, { numero: data.numero, promotion: payload.promotion_pourcentage });
+  res.json(await getInterventionFull(req.params.id));
+}, { admin: true, permission: 'interventions.validate' }));
+
+app.post('/api/interventions/:id/generate-invoice', asyncRoute(async (req, res) => {
+  const intervention = await getInterventionFull(req.params.id);
+  if (intervention.facture_id && !req.body.force_new) {
+    return res.status(409).json({ error: `Cette intervention est déjà liée à une facture (${intervention.factures?.numero || intervention.facture_id}).` });
+  }
+  const promotion = req.body.promotion_pourcentage !== undefined ? toNumber(req.body.promotion_pourcentage) : toNumber(intervention.promotion_pourcentage);
+  let lignes = buildInvoiceLinesFromSteps(intervention.steps || [], promotion);
+  if (!lignes.length) {
+    if (intervention.travaux_realises) lignes.push({ type_ligne: 'service', designation: intervention.travaux_realises, quantite: 1, prix_unitaire: 10000, remise: 0 });
+    for (const piece of intervention.pieces || []) {
+      lignes.push({ type_ligne: 'produit', produit_id: piece.produit_id, designation: piece.produits?.nom || 'Produit utilisé', quantite: piece.quantite || 1, prix_unitaire: piece.prix_unitaire || piece.produits?.prix_unitaire || 15000, remise: 0 });
+    }
+  }
+  if (!lignes.length) return res.status(400).json({ error: 'Aucune étape ou ligne facturable trouvée pour cette intervention.' });
+
+  const acompte = toNumber(req.body.acompte_initial || req.body.montant_paye);
+  const facture = await insertDocument('factures', 'lignes_facture', 'facture_id', 'FAC', 'date_facture', {
+    client_id: intervention.client_id,
+    intervention_id: intervention.id,
+    date_facture: req.body.date_facture || new Date().toISOString().slice(0, 10),
+    date_limite_paiement: req.body.date_limite_paiement || null,
+    acompte_initial: acompte,
+    montant_paye: acompte,
+    taxe_pourcentage: req.body.taxe_pourcentage || 0,
+    remise: req.body.remise || 0,
+    notes: req.body.notes || `Facture générée depuis l’intervention ${intervention.numero}`,
+    lignes
+  }, req);
+
+  try {
+    await supabase.from('factures').update({
+      date_limite_paiement: req.body.date_limite_paiement || null,
+      acompte_initial: acompte
+    }).eq('id', facture.id);
+  } catch (e) {
+    console.warn('Colonnes facture v2228 non mises à jour:', e.message);
+  }
+
+  let paiement = null;
+  if (acompte > 0) {
+    const numeroRecu = await nextNumero('REC', 'paiements');
+    const { data, error } = await supabase.from('paiements').insert({
+      facture_id: facture.id,
+      numero_recu: numeroRecu,
+      montant: acompte,
+      methode: req.body.methode_acompte || 'acompte',
+      reference: req.body.reference_acompte || '',
+      date_paiement: req.body.date_facture || new Date().toISOString().slice(0, 10),
+      notes: `Acompte initial lié à l’intervention ${intervention.numero}`,
+      solde_apres_paiement: facture.solde,
+      origine: 'intervention'
+    }).select('*').single();
+    if (error) throw error;
+    paiement = data;
+  }
+
+  for (const ligne of lignes.filter(l => l.type_ligne === 'produit' && l.produit_id)) {
+    const { data: product } = await supabase.from('produits').select('quantite_stock, nom').eq('id', ligne.produit_id).maybeSingle();
+    if (!product) continue;
+    const nextStock = Math.max(0, toNumber(product.quantite_stock) - toNumber(ligne.quantite));
+    await supabase.from('produits').update({ quantite_stock: nextStock }).eq('id', ligne.produit_id);
+    await insertBestEffort('mouvements_stock', {
+      produit_id: ligne.produit_id,
+      type_mouvement: 'sortie',
+      quantite: toNumber(ligne.quantite),
+      motif: `Produit utilisé workflow intervention ${intervention.numero}`,
+      reference_document: facture.numero
+    });
+  }
+
+  await supabase.from('interventions').update({ statut: 'facturee', workflow_statut: 'facturee', facture_id: facture.id }).eq('id', intervention.id);
+  await notifyRoles(['comptable', 'administrateur', 'directeur'], {
+    type: 'facture_intervention',
+    title: 'Facture générée',
+    message: `La facture ${facture.numero} a été générée depuis l’intervention ${intervention.numero}.`,
+    data: { intervention_id: intervention.id, facture_id: facture.id, paiement_id: paiement?.id || null }
+  });
+  await logAction(req, 'Génération facture depuis intervention', 'factures', facture.id, { intervention: intervention.numero, facture: facture.numero, acompte });
+  res.status(201).json({ facture, paiement });
+}, { admin: true, permission: 'interventions.generate_invoice' }));
+
 function computeDocumentTotals(body) {
   const lignes = Array.isArray(body.lignes) ? body.lignes : [];
   const sousTotalLignes = lignes.reduce((sum, l) => sum + (toNumber(l.quantite) * toNumber(l.prix_unitaire) - toNumber(l.remise)), 0);
@@ -1542,10 +2146,21 @@ async function insertDocument(table, linesTable, lineFk, prefix, dateField, body
     statut: totals.solde <= 0 && table === 'factures' ? 'payee' : (body.statut || 'brouillon'),
     sous_total: totals.sousTotal, remise: totals.remise, taxe: totals.taxeMontant, total: totals.total, notes: body.notes || ''
   };
-  if (table === 'factures') { payload.montant_paye = totals.montantPaye; payload.solde = totals.solde; payload.statut = totals.solde <= 0 ? 'payee' : 'impayee'; }
+  if (table === 'factures') {
+    payload.montant_paye = totals.montantPaye;
+    payload.solde = totals.solde;
+    payload.statut = totals.solde <= 0 ? 'payee' : 'impayee';
+    if (body.date_limite_paiement) payload.date_limite_paiement = body.date_limite_paiement;
+    if (body.acompte_initial !== undefined) payload.acompte_initial = toNumber(body.acompte_initial);
+  }
   if (totals.taxePourcentage !== null) payload.taxe_pourcentage = totals.taxePourcentage;
 
   let { data, error } = await supabase.from(table).insert(payload).select('*').single();
+  if (error && /(date_limite_paiement|acompte_initial)/i.test(error.message || '')) {
+    delete payload.date_limite_paiement;
+    delete payload.acompte_initial;
+    const retry = await supabase.from(table).insert(payload).select('*').single(); data = retry.data; error = retry.error;
+  }
   if (error && /taxe_pourcentage/i.test(error.message || '')) {
     delete payload.taxe_pourcentage; payload.notes = `${payload.notes || ''}\nTaxe pourcentage: ${toNumber(totals.taxePourcentage)}%`.trim();
     const retry = await supabase.from(table).insert(payload).select('*').single(); data = retry.data; error = retry.error;
@@ -1584,6 +2199,66 @@ app.get('/api/factures', asyncRoute(async (req, res) => {
   if (error) throw error; res.json(data || []);
 }));
 app.post('/api/factures', asyncRoute(async (req, res) => res.status(201).json(await insertDocument('factures', 'lignes_facture', 'facture_id', 'FAC', 'date_facture', req.body, req))));
+app.post('/api/factures/:id/send', asyncRoute(async (req, res) => {
+  const { data: facture, error } = await supabase
+    .from('factures')
+    .select('*, clients(nom, entreprise_nom, telephone, whatsapp, email)')
+    .eq('id', req.params.id)
+    .single();
+  if (error) throw error;
+  const { data: paiements } = await supabase.from('paiements').select('id, numero_recu').eq('facture_id', facture.id).order('date_paiement', { ascending: true });
+  const factureUrl = buildSignedDocumentUrl('factures', facture.id);
+  const receiptUrls = (paiements || []).map(p => buildSignedDocumentUrl('paiements', p.id));
+  const message = [
+    `Votre facture HydroConnecto ${facture.numero} est disponible.`,
+    `Total: ${money(facture.total)} | Payé: ${money(facture.montant_paye)} | Solde: ${money(facture.solde)}`,
+    facture.date_limite_paiement ? `Date limite: ${facture.date_limite_paiement}` : '',
+    `Facture: ${factureUrl}`,
+    receiptUrls.length ? `Reçu(s): ${receiptUrls.join(' ')}` : ''
+  ].filter(Boolean).join('\n');
+  await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, message, { type: 'facture_send', facture_id: facture.id });
+  await createAppNotification({
+    type: 'facture_envoyee',
+    role: 'comptable',
+    title: 'Facture envoyée',
+    message: `La facture ${facture.numero} a été envoyée au client.`,
+    data: { facture_id: facture.id }
+  });
+  await logAction(req, 'Envoi facture au client', 'factures', facture.id, { numero: facture.numero });
+  res.json({ success: true, facture_url: factureUrl, recu_urls: receiptUrls });
+}, { admin: true, permission: 'factures.view' }));
+
+app.post('/api/reminders/payment-due', asyncRoute(async (req, res) => {
+  const today = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const targetDates = [30, 15].map(days => new Date(today.getTime() + days * dayMs).toISOString().slice(0, 10));
+  const { data, error } = await supabase
+    .from('factures')
+    .select('id, numero, total, montant_paye, solde, date_limite_paiement, clients(nom, entreprise_nom, telephone, whatsapp)')
+    .gt('solde', 0)
+    .in('date_limite_paiement', targetDates);
+  if (error) throw error;
+  const sent = [];
+  for (const facture of data || []) {
+    const due = new Date(facture.date_limite_paiement);
+    const daysLeft = Math.max(0, Math.round((due.getTime() - today.getTime()) / dayMs));
+    await sendWhatsAppText(
+      facture.clients?.whatsapp || facture.clients?.telephone,
+      `HydroConnecto: rappel paiement facture ${facture.numero}.\nSolde: ${money(facture.solde)}\nDate limite: ${facture.date_limite_paiement}\nIl reste environ ${daysLeft} jour(s).`,
+      { type: 'payment_due_reminder', facture_id: facture.id, days_left: daysLeft }
+    );
+    await createAppNotification({
+      type: 'rappel_paiement',
+      role: 'comptable',
+      title: 'Rappel paiement envoyé',
+      message: `Rappel envoyé pour la facture ${facture.numero}, échéance ${facture.date_limite_paiement}.`,
+      data: { facture_id: facture.id, days_left: daysLeft }
+    });
+    sent.push(facture.id);
+  }
+  res.json({ success: true, sent: sent.length });
+}, { admin: true, permission: 'paiements.view' }));
+
 app.get('/api/paiements', asyncRoute(async (req, res) => {
   const { data, error } = await supabase.from('paiements').select('*, factures(numero, total, solde, clients(nom, entreprise_nom, telephone))').order('created_at', { ascending: false });
   if (error) throw error; res.json(data || []);
@@ -1599,6 +2274,12 @@ app.post('/api/paiements', asyncRoute(async (req, res) => {
       const solde = Math.max(0, toNumber(facture.total) - montantPaye);
       await supabase.from('factures').update({ montant_paye: montantPaye, solde, statut: solde <= 0 ? 'payee' : 'impayee' }).eq('id', payload.facture_id);
       await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, `HydroConnecto: paiement reçu pour la facture ${facture.numero}.\nMontant: ${money(payload.montant)}\nSolde restant: ${money(solde)}`, { type: 'paiement', id: data.id, facture_id: payload.facture_id });
+      await notifyRoles(['comptable', 'administrateur', 'directeur'], {
+        type: 'paiement_enregistre',
+        title: 'Paiement enregistré',
+        message: `Paiement de ${money(payload.montant)} enregistré pour la facture ${facture.numero}. Solde: ${money(solde)}.`,
+        data: { facture_id: payload.facture_id, paiement_id: data.id }
+      });
     }
   }
   await logAction(req, 'Création reçu / paiement', 'paiements', data.id, { numero: data.numero_recu, montant: data.montant });
@@ -1685,6 +2366,12 @@ app.post('/api/webhooks/payment', asyncRoute(async (req, res) => {
   await supabase.from('factures').update({ montant_paye: montantPaye, solde, statut: solde <= 0 ? 'payee' : 'impayee' }).eq('id', tx.facture_id);
   await supabase.from('payment_transactions').update({ statut: 'payee', webhook_payload: body, paiement_id: paiement.id, updated_at: new Date().toISOString() }).eq('id', tx.id);
   await sendWhatsAppText(facture.clients?.whatsapp || facture.clients?.telephone, `HydroConnecto: paiement confirmé pour la facture ${facture.numero}.\nMontant: ${money(montant)}\nReçu: ${numeroRecu}`, { type: 'payment_webhook', paiement_id: paiement.id, reference });
+  await notifyRoles(['comptable', 'administrateur', 'directeur'], {
+    type: 'paiement_confirme',
+    title: 'Paiement client confirmé',
+    message: `Paiement confirmé de ${money(montant)} pour la facture ${facture.numero}. Reçu ${numeroRecu}.`,
+    data: { facture_id: tx.facture_id, paiement_id: paiement.id, reference }
+  });
   res.json({ received: true, applied: true, paiement_id: paiement.id });
 }, { admin: false }));
 
@@ -1980,10 +2667,48 @@ function drawTableHeader(doc, y) {
   doc.text('Total', 460, y + 8, { width: 82, align: 'right' });
 }
 
-function drawDocumentPdf(res, type, record, lignes) {
+async function readPdfAssetBuffer(bucket, storagePath, url) {
+  try {
+    if (bucket && storagePath && bucket !== 'local' && supabase) {
+      const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+      if (error) throw error;
+      return Buffer.from(await data.arrayBuffer());
+    }
+    const localName = storagePath || (String(url || '').startsWith('/uploads/') ? String(url).replace('/uploads/', '') : '');
+    if (localName) {
+      const localPath = path.join(UPLOAD_DIR, path.basename(localName));
+      if (fs.existsSync(localPath)) return await fs.promises.readFile(localPath);
+    }
+  } catch (e) {
+    console.warn('Image PDF non chargée:', e.message);
+  }
+  return null;
+}
+
+async function getPdfSignatureAssets(entreprise = {}) {
+  const [cachet, signature] = await Promise.all([
+    readPdfAssetBuffer(entreprise.cachet_bucket, entreprise.cachet_path, entreprise.cachet_url),
+    readPdfAssetBuffer(entreprise.signature_bucket, entreprise.signature_path, entreprise.signature_url)
+  ]);
+  return { cachet, signature };
+}
+
+function drawSignatureStamp(doc, assets = {}) {
+  doc.fillColor('#111827').fontSize(9).font('Helvetica').text('Signature / Cachet', 42, 645);
+  doc.roundedRect(42, 665, 180, 45, 4).strokeColor('#D1D5DB').stroke();
+  try {
+    if (assets.signature) doc.image(assets.signature, 54, 673, { fit: [74, 28] });
+    if (assets.cachet) doc.image(assets.cachet, 126, 660, { fit: [82, 54] });
+  } catch (e) {
+    console.warn('Cachet/signature PDF non appliqué:', e.message);
+  }
+}
+
+async function drawDocumentPdf(res, type, record, lignes) {
   const isReceipt = type === 'recu';
   const entreprise = isReceipt ? (record.factures?.entreprises || COMPANY) : (record.entreprises || COMPANY);
   const client = isReceipt ? (record.factures?.clients || {}) : (record.clients || {});
+  const signatureAssets = await getPdfSignatureAssets(entreprise);
   const title = type === 'facture' ? 'FACTURE' : type === 'devis' ? 'DEVIS' : 'REÇU';
   const numero = isReceipt ? record.numero_recu : record.numero;
   const file = `${numero || title}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -2028,8 +2753,10 @@ function drawDocumentPdf(res, type, record, lignes) {
     const pct = record.taxe_pourcentage === null || record.taxe_pourcentage === undefined ? 0 : toNumber(record.taxe_pourcentage);
     const rows = [['Sous-total', money(record.sous_total)], ['Remise', money(record.remise)], [`Taxe (${pct} %)`, money(record.taxe)], ['Total', money(record.total)], ...(type === 'facture' ? [['Payé', money(record.montant_paye)], ['Solde', money(record.solde)]] : [])];
     rows.forEach(([label, value], i) => { doc.fillColor(i === 3 ? night : '#111827').font(i === 3 ? 'Helvetica-Bold' : 'Helvetica').fontSize(i === 3 ? 11 : 10); doc.text(label, 340, y, { width: 100 }); doc.text(value, 440, y, { width: 95, align: 'right' }); y += 18; });
-    doc.fillColor('#111827').fontSize(9).font('Helvetica').text('Signature / Cachet', 42, 645);
-    doc.roundedRect(42, 665, 180, 45, 4).strokeColor('#D1D5DB').stroke();
+    if (type === 'facture' && record.date_limite_paiement) {
+      doc.fillColor('#111827').fontSize(9).font('Helvetica-Bold').text(`Date limite de paiement : ${record.date_limite_paiement}`, 42, 618, { width: 250 });
+    }
+    drawSignatureStamp(doc, signatureAssets);
   } else {
     const boxY = 230;
     doc.roundedRect(90, boxY, 415, 145, 8).fillAndStroke('#FAFAFA', '#E5E7EB');
@@ -2039,8 +2766,7 @@ function drawDocumentPdf(res, type, record, lignes) {
     doc.text(`Méthode : ${record.methode || 'espèces'}`, 110, boxY + 78);
     doc.text(`Référence : ${record.reference || '-'}`, 110, boxY + 101);
     doc.text(`Facture liée : ${record.factures?.numero || '-'}`, 110, boxY + 124);
-    doc.fontSize(9).text('Signature / Cachet', 42, 645);
-    doc.roundedRect(42, 665, 180, 45, 4).strokeColor('#D1D5DB').stroke();
+    drawSignatureStamp(doc, signatureAssets);
   }
 
   const range = doc.bufferedPageRange();
@@ -2050,9 +2776,22 @@ function drawDocumentPdf(res, type, record, lignes) {
   }
   doc.end();
 }
-app.get('/api/pdf/factures/:id', asyncRoute(async (req, res) => { const { doc, lignes } = await getFullDocument('factures', 'lignes_facture', req.params.id); drawDocumentPdf(res, 'facture', doc, lignes); }));
-app.get('/api/pdf/devis/:id', asyncRoute(async (req, res) => { const { doc, lignes } = await getFullDocument('devis', 'lignes_devis', req.params.id); drawDocumentPdf(res, 'devis', doc, lignes); }));
-app.get('/api/pdf/paiements/:id', asyncRoute(async (req, res) => { const { doc } = await getFullDocument('paiements', null, req.params.id); drawDocumentPdf(res, 'recu', doc, []); }));
+app.get('/api/pdf/factures/:id', asyncRoute(async (req, res) => { const { doc, lignes } = await getFullDocument('factures', 'lignes_facture', req.params.id); await drawDocumentPdf(res, 'facture', doc, lignes); }));
+app.get('/api/pdf/devis/:id', asyncRoute(async (req, res) => { const { doc, lignes } = await getFullDocument('devis', 'lignes_devis', req.params.id); await drawDocumentPdf(res, 'devis', doc, lignes); }));
+app.get('/api/pdf/paiements/:id', asyncRoute(async (req, res) => { const { doc } = await getFullDocument('paiements', null, req.params.id); await drawDocumentPdf(res, 'recu', doc, []); }));
+app.get('/api/public-documents/:type/:id.pdf', asyncRoute(async (req, res) => {
+  const type = String(req.params.type || '');
+  if (!['factures', 'paiements'].includes(type)) return res.status(404).send('Document non disponible');
+  if (!verifyPublicDocumentSignature(type, req.params.id, req.query.expires, String(req.query.sig || ''))) {
+    return res.status(403).send('Lien document expiré ou invalide');
+  }
+  if (type === 'factures') {
+    const { doc, lignes } = await getFullDocument('factures', 'lignes_facture', req.params.id);
+    return drawDocumentPdf(res, 'facture', doc, lignes);
+  }
+  const { doc } = await getFullDocument('paiements', null, req.params.id);
+  return drawDocumentPdf(res, 'recu', doc, []);
+}, { admin: false }));
 
 // Galerie
 app.get('/api/galerie', asyncRoute(async (req, res) => {

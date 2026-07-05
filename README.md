@@ -1,4 +1,4 @@
-# HydroConnecto ERP Pro v2.2.2.6 PRO
+# HydroConnecto ERP Pro v2.2.2.8 PRO
 
 Version corrigée et nettoyée pour usage professionnel.
 
@@ -13,6 +13,10 @@ Version corrigée et nettoyée pour usage professionnel.
 - Galerie/admin conservés avec actions ajouter, modifier, archiver/réactiver, supprimer quand disponibles.
 - Sécurité renforcée : cookies stricts, anti-CSRF, limitation des tentatives de connexion, mots de passe hashés, stockage privé pour documents sensibles.
 - Intégrations configurables : notifications WhatsApp et API de paiement via variables d’environnement.
+- Workflow intervention complet : assignation équipe, démarrage, étapes service/produits, photos avant/après, rapport, validation admin, relance, génération facture.
+- Facturation avancée : prix par défaut services 10 000 FCFA, produits 15 000 FCFA, remise par étape, promotion globale, acompte/down payment, reçu lié, solde et date limite.
+- Espace client : connexion par code téléphone/WhatsApp, consultation des factures, paiement en ligne, PDF signés temporaires pour facture/reçu.
+- Cachet et signature : upload depuis l’admin et apposition automatique sur les PDF.
 
 ## Installation locale
 
@@ -63,4 +67,10 @@ Pour le niveau sécurité/paiement/notifications, exécute aussi :
 
 ```sql
 sql/hydroconnecto_security_payments_notifications_v2227.sql
+```
+
+Pour le workflow intervention, l’espace client, les acomptes et les cachets/signatures, exécute ensuite :
+
+```sql
+sql/hydroconnecto_intervention_workflow_client_portal_v2228.sql
 ```
