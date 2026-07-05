@@ -96,6 +96,32 @@ function updateAdminMenuGroups() {
   qsa('[data-menu-group]').forEach(group => {
     const hasVisibleItem = qsa('.admin-tab[data-admin]', group).some(btn => !btn.classList.contains('hidden'));
     group.classList.toggle('hidden', !hasVisibleItem);
+    if (!hasVisibleItem) setAdminMenuGroupOpen(group, false);
+  });
+}
+
+function setAdminMenuGroupOpen(group, open) {
+  if (!group) return;
+  group.classList.toggle('open', Boolean(open));
+  qs('.admin-menu-toggle', group)?.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function openAdminMenuGroupForTab(tabName) {
+  const tab = qs(`.admin-tab[data-admin="${tabName}"]`);
+  const group = tab?.closest('[data-menu-group]');
+  if (!group) return;
+  qsa('[data-menu-group]').forEach(item => setAdminMenuGroupOpen(item, item === group));
+}
+
+function setupAdminMenuAccordions() {
+  qsa('[data-menu-group]').forEach(group => {
+    const toggle = qs('.admin-menu-toggle', group);
+    if (!toggle || toggle.dataset.bound === 'true') return;
+    toggle.dataset.bound = 'true';
+    toggle.addEventListener('click', () => {
+      const shouldOpen = !group.classList.contains('open');
+      qsa('[data-menu-group]').forEach(item => setAdminMenuGroupOpen(item, item === group && shouldOpen));
+    });
   });
 }
 
@@ -137,6 +163,7 @@ function initMenu() {
   $('menuBtn')?.addEventListener('click', () => $('publicNav').classList.toggle('open'));
   qsa('#publicNav a').forEach(a => a.addEventListener('click', () => $('publicNav').classList.remove('open')));
   $('adminMenuBtn')?.addEventListener('click', () => qs('.admin-sidebar').classList.toggle('open'));
+  setupAdminMenuAccordions();
 }
 function showPublic() { $('publicHeader').classList.remove('hidden'); $('publicApp').classList.remove('hidden'); $('adminApp').classList.add('hidden'); }
 function showLogin() {
@@ -225,6 +252,7 @@ function renderPublicTeam(items) {
 function activateAdminPage(name) {
   qsa('.admin-tab').forEach(b => b.classList.toggle('active', b.dataset.admin === name));
   qsa('.admin-page').forEach(p => p.classList.toggle('active', p.id === `admin-${name}`));
+  openAdminMenuGroupForTab(name);
   qs('.admin-sidebar')?.classList.remove('open');
   const loaders = { dashboard: loadDashboard, demandes: loadDemandes, clients: loadClients, engins: loadEngins, produits: loadProduits, services: loadServices, interventions: loadInterventions, documents: loadDocuments, galerieAdmin: loadGalerieAdmin, equipeAdmin: loadEquipeAdmin, journal: loadJournal, usersAdmin: loadUsersAdmin, exports: renderExports };
   loaders[name]?.();
@@ -1576,6 +1604,7 @@ loadAdminBasics = async function loadAdminBasicsV2224() {
 activateAdminPage = function activateAdminPageV2224(name) {
   qsa('.admin-tab').forEach(b => b.classList.toggle('active', b.dataset.admin === name));
   qsa('.admin-page').forEach(p => p.classList.toggle('active', p.id === `admin-${name}`));
+  openAdminMenuGroupForTab(name);
   qs('.admin-sidebar')?.classList.remove('open');
   const loaders = { dashboard: loadDashboard, demandes: loadDemandes, clients: loadClients, engins: loadEngins, produits: loadProduits, services: loadServices, interventions: loadInterventions, documents: loadDocuments, fournisseurs: loadFournisseurs, galerieAdmin: loadGalerieAdmin, equipeAdmin: loadEquipeAdmin, journal: loadJournal, usersAdmin: loadUsersAdmin, profile: loadProfile, exports: renderExports };
   loaders[name]?.();

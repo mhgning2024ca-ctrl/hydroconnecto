@@ -90,9 +90,15 @@ label { font-weight: 700; color: var(--night); display: grid; gap: 7px; }
 .admin-nav-groups { display: grid; gap: 14px; }
 .admin-menu-group { display: grid; gap: 6px; padding-top: 4px; }
 .admin-menu-group + .admin-menu-group { border-top: 1px solid rgba(255,255,255,.14); padding-top: 13px; }
-.admin-menu-heading { margin: 0 0 2px; color: rgba(255,255,255,.62); font-size: 11px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+.admin-menu-toggle { width: 100%; border: 1px solid rgba(255,255,255,.13); background: rgba(255,255,255,.08); color: rgba(255,255,255,.82); min-height: 42px; padding: 10px 12px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; font-size: 11px; font-weight: 950; letter-spacing: 0; text-transform: uppercase; }
+.admin-menu-toggle:hover, .admin-menu-group.open .admin-menu-toggle { background: var(--yellow); color: var(--night); border-color: var(--yellow); }
+.admin-menu-chevron::before { content: "⌄"; display: inline-block; font-size: 17px; line-height: 1; transform: rotate(-90deg); transition: transform .2s ease; }
+.admin-menu-group.open .admin-menu-chevron::before { transform: rotate(0deg); }
+.admin-submenu { display: none; gap: 6px; padding-left: 8px; border-left: 2px solid rgba(245,196,0,.34); margin-left: 8px; }
+.admin-menu-group.open .admin-submenu { display: grid; }
 .admin-tab { border: 0; background: transparent; color: white; text-align: left; padding: 12px 14px; border-radius: 12px; font-weight: 800; cursor: pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-.admin-tab:hover, .admin-tab.active { background: var(--yellow); color: var(--night); }
+.admin-tab:hover { background: white; color: var(--night); }
+.admin-tab.active { background: var(--yellow); color: var(--night); }
 .badge-small { background: var(--danger); color: white; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
 .admin-content { background: var(--light); min-width: 0; }
 .admin-topbar { background: white; border-bottom: 1px solid var(--border); padding: 14px 22px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
@@ -1223,4 +1229,44 @@ body:not(.admin-body) { padding-top: 74px !important; }
   border: 1px solid var(--danger) !important;
   color: var(--danger) !important;
   background: transparent !important;
+}
+
+/* ===== HYDROCONNECTO PRO — Menu admin accordéon ===== */
+@media (max-width: 900px) {
+  .admin-sidebar {
+    top: 74px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: calc(100vh - 74px) !important;
+    padding: 14px 16px 18px !important;
+    transform: translateY(-110%) !important;
+    transition: transform .24s ease !important;
+    border-bottom: 2px solid var(--yellow) !important;
+    box-shadow: 0 18px 36px rgba(0,0,0,.28) !important;
+  }
+
+  .admin-sidebar.open {
+    transform: translateY(0) !important;
+  }
+
+  .admin-brand {
+    margin-bottom: 10px !important;
+  }
+
+  .admin-nav-groups {
+    gap: 10px !important;
+  }
+
+  .admin-menu-group + .admin-menu-group {
+    padding-top: 10px !important;
+  }
+
+  .admin-submenu {
+    grid-template-columns: 1fr !important;
+    padding-left: 6px !important;
+    margin-left: 6px !important;
+  }
 }
